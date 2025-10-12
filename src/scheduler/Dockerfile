@@ -1,7 +1,12 @@
+# src/scheduler/Dockerfile
 FROM python:3.11-slim
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY src/scheduler/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-COPY src/scheduler/scheduler /app/scheduler
+ENV PYTHONUNBUFFERED=1 TZ=America/Lima
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# copia todo el paquete scheduler (cron + jobs)
+COPY . /app/scheduler
+
+CMD ["python", "-m", "scheduler.cron_loop"]
