@@ -10,7 +10,7 @@ from .jobs import fetch_igp_extract, fetch_igp_load
 from .jobs.common import log
 
 if __name__ == "__main__":
-    log("Scheduler iniciado (intervalo de 10 Minutos).")
+    log("Scheduler iniciado (intervalo de 120 Minutos).")
 
     while True:
         try:
@@ -20,5 +20,5 @@ if __name__ == "__main__":
             log("Ciclo completado correctamente.")
         except Exception as e:
             log(f"Error en el ciclo principal: {e}")
-        log("Esperando 600 segundos (10 Minutos) antes del siguiente ciclo.")
-        time.sleep(600)
+        log("Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.")
+        time.sleep(7200)

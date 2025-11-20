@@ -1,18 +1,16 @@
-# Acepta arg del compose; usa 3.11-slim por defecto si no llega
+# src/api/Dockerfile
+
 ARG PYTHON_VERSION=3.11-slim
 FROM python:${PYTHON_VERSION}
 
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1
 
-# deps del sistema para psqsl/geo si hicieras queries directas
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc libpq-dev \
- && rm -rf /var/lib/apt/lists/*
+# Instalamos dependencias
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Copiamos todo el código de src/api a /app
+COPY . .
 
-COPY app /app/app
-
-# uvicorn lo ejecuta el compose (command:)
+# El comando se sobreescribe en el docker-compose, pero este es el default
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
