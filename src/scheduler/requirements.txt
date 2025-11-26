@@ -8,3 +8,10 @@ pytz
 requests
 tensorflow==2.17.0
 numpy
+asyncpg
+scikit-learn
+matplotlib
+seaborn
+pydot
+graphviz
+reverse_geocoder

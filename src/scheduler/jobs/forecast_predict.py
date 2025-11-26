@@ -1,16 +1,18 @@
 import os
 import json
 import datetime as dt
-
+import math
 import numpy as np
 import pandas as pd
 import psycopg2
 import psycopg2.extras
 import tensorflow as tf
-
+import reverse_geocoder as rg 
 from dataclasses import dataclass
-from typing import Tuple
 
+# ==========================
+#  CONFIGURACIÓN
+# ==========================
 
 @dataclass
 class Config:
@@ -19,340 +21,200 @@ class Config:
     db_name: str = os.getenv("DB_NAME", "quake")
     db_user: str = os.getenv("DB_USER", "quake")
     db_password: str = os.getenv("DB_PASSWORD", "changeme")
-
-    mag_min: float = float(os.getenv("PRED_MAG_MIN", "4.0"))
-    horizons: Tuple[int, ...] = tuple(int(x) for x in os.getenv("PRED_HORIZONS", "7,14").split(","))
-
-    window_days: int = int(os.getenv("TRAIN_WINDOW_DAYS", "30"))
+    
     models_dir: str = os.getenv("MODELS_DIR", "/app/artifacts/models")
-    topk_k: int = int(os.getenv("TOPK_K", "10"))
-
-    # límite de celdas para que no explote en inferencia
-    max_cells_infer: int = int(os.getenv("INFER_MAX_CELLS", "2000"))
-
+    
+    # CAMBIO EXPERTO: Subimos a 25 para tener margen de error y capturar más sismos.
+    # 10 era muy estricto (1:1 con la realidad). 25 da holgura (2.5:1).
+    topk_k: int = 25
+    
+    lookback_days: int = 90 
 
 def get_conn(cfg: Config):
     return psycopg2.connect(
-        host=cfg.db_host,
-        port=cfg.db_port,
-        dbname=cfg.db_name,
-        user=cfg.db_user,
-        password=cfg.db_password,
+        host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, 
+        user=cfg.db_user, password=cfg.db_password
     )
 
+# ==========================
+#  UTILIDADES GEOGRÁFICAS CIENTÍFICAS
+# ==========================
 
-# ============================
-# 1. OBTENER MODELO ACTIVO
-# ============================
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Calcula distancia en km entre dos puntos (Fórmula Haversine)."""
+    R = 6371.0 # Radio Tierra
+    dLat = math.radians(lat2 - lat1)
+    dLon = math.radians(lon2 - lon1)
+    a = math.sin(dLat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
-def get_active_model_meta(cfg: Config):
+def get_cardinal_direction(lat1, lon1, lat2, lon2):
+    """Calcula la dirección (N, NE, E...) del sismo respecto a la ciudad."""
+    dLon = math.radians(lon1 - lon2)
+    lat1 = math.radians(lat1)
+    lat2 = math.radians(lat2)
+    y = math.sin(dLon) * math.cos(lat1)
+    x = math.cos(lat2) * math.sin(lat1) - math.sin(lat2) * math.cos(lat1) * math.cos(dLon)
+    bearing = math.degrees(math.atan2(y, x))
+    bearing = (bearing + 360) % 360
+    dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
+    idx = round(bearing / 45) % 8
+    return dirs[idx]
+
+def format_location(event_lat, event_lon, geo_info):
+    """Genera texto rico: 'A 15 km al SO de Mala, Lima'"""
+    city_name = geo_info.get('name', 'Zona')
+    region = geo_info.get('admin1', '')
+    
+    city_lat = float(geo_info['lat'])
+    city_lon = float(geo_info['lon'])
+    
+    dist = haversine_km(event_lat, event_lon, city_lat, city_lon)
+    
+    if dist < 5:
+        return f"En {city_name}, {region}"
+    
+    direction = get_cardinal_direction(event_lat, event_lon, city_lat, city_lon)
+    return f"A {int(dist)} km al {direction} de {city_name}, {region}"
+
+# ==========================
+#  LÓGICA DEL MODELO
+# ==========================
+
+def get_active_model(cfg: Config):
     with get_conn(cfg) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT model_id, params_json, horizons, mag_min
-                FROM public.model_registry
-                WHERE is_active = true
-                ORDER BY created_at DESC
-                LIMIT 1;
-                """
-            )
+            cur.execute("""
+                SELECT model_id, params_json, horizons, mag_min 
+                FROM public.model_registry WHERE is_active = true 
+                ORDER BY created_at DESC LIMIT 1
+            """)
             row = cur.fetchone()
-    if row is None:
-        raise RuntimeError("No hay modelo activo en model_registry")
+    if not row: raise RuntimeError("No hay modelo activo.")
+    params = row["params_json"]
+    path_rel = params.get("model_path")
+    if not path_rel:
+         files = sorted([f for f in os.listdir(cfg.models_dir) if f.endswith(".keras")])
+         if files: path_rel = files[-1]
+         else: raise RuntimeError("No se encontró archivo .keras.")
+    path = os.path.join(cfg.models_dir, path_rel)
+    return row["model_id"], path, row["horizons"], float(row["mag_min"])
 
-    model_id = row["model_id"]
-    params = row["params_json"] or {}
-    model_path_rel = params.get("model_path")
-    if not model_path_rel:
-        raise RuntimeError("El modelo activo no tiene 'model_path' en params_json")
-
-    model_path = os.path.join(cfg.models_dir, model_path_rel)
-    horizons = row["horizons"]
-    mag_min = float(row["mag_min"])
-
-    return model_id, model_path, horizons, mag_min
-
-
-# ============================
-# 2. SERIE DIARIA PARA INFERENCIA
-# ============================
-
-def load_daily_cell_series_for_inference(cfg: Config) -> pd.DataFrame:
-    """
-    Construye la serie diaria SOLO para los últimos N días (INFER_LOOKBACK_DAYS),
-    en lugar de usar toda la historia desde 1960. Esto reduce muchísimo el tamaño
-    del DataFrame y acelera la inferencia.
-    """
-
-    lookback_days = int(os.getenv("INFER_LOOKBACK_DAYS", "365"))
-
+def build_national_tensor(cfg: Config, mag_min: float, window_days: int):
+    print("[PRED] Cargando historial reciente...")
     query = """
-    WITH events_with_cell AS (
-        SELECT
-            date_trunc('day', e.event_time_utc)::date AS event_date,
-            c.cell_id,
-            COUNT(*) AS event_count
-        FROM public.events_clean e
-        JOIN public.prediction_cells c
-          ON ST_Contains(
-                c.geom,
-                ST_SetSRID(ST_MakePoint(e.lon, e.lat), 4326)
-             )
-        WHERE e.magnitude >= %s
-        GROUP BY event_date, c.cell_id
-    )
-    SELECT
-        event_date AS date,
-        cell_id,
-        event_count
-    FROM events_with_cell
-    ORDER BY date, cell_id;
+    SELECT c.cell_id, date_trunc('day', e.event_time_utc)::date as date, COUNT(e.id) as count
+    FROM public.prediction_cells c
+    LEFT JOIN public.events_clean e 
+        ON ST_Intersects(c.geom, e.geom) AND e.magnitude >= %s AND e.event_time_utc >= (current_date - interval '%s days')
+    GROUP BY c.cell_id, date
     """
-
     with get_conn(cfg) as conn:
-        df_events = pd.read_sql_query(query, conn, params=(cfg.mag_min,))
+        df = pd.read_sql_query(query, conn, params=(mag_min, cfg.lookback_days))
+    
+    df["date"] = pd.to_datetime(df["date"])
+    pivot = df.pivot(index="date", columns="cell_id", values="count").fillna(0)
+    
+    # --- FECHA AUTOMÁTICA (PRODUCCIÓN) ---
+    end_date = pd.Timestamp.now().date() - pd.Timedelta(days=1) 
+    
+    # --- FECHA MANUAL (BACKTESTING - Descomentar para pruebas pasadas) ---
+    #end_date = pd.Timestamp("2025-11-01").date() 
+    
+    full_idx = pd.date_range(end=end_date, periods=cfg.lookback_days, freq="D")
+    pivot = pivot.reindex(full_idx, fill_value=0)
+    
+    recent_matrix = pivot.iloc[-window_days:].values
+    cell_ids = pivot.columns.to_numpy()
+    last_input_date = pivot.index[-1] 
+    
+    if len(recent_matrix) < window_days: raise RuntimeError("Datos insuficientes.")
 
-    if df_events.empty:
-        raise RuntimeError("No se encontraron eventos para el umbral de magnitud dado (inference).")
+    feat_counts = recent_matrix.T 
+    means = feat_counts.mean(axis=1, keepdims=True)
+    stds = feat_counts.std(axis=1, keepdims=True) + 1e-5
+    feat_norm = (feat_counts - means) / stds
+    feat_bin = (feat_counts > 0).astype(np.float32)
+    X = np.stack([feat_norm, feat_bin], axis=-1)
+    
+    return X, cell_ids, last_input_date
 
-    df_events["date"] = pd.to_datetime(df_events["date"])
-
-    max_date = df_events["date"].max()
-    min_date = max_date - pd.Timedelta(days=lookback_days - 1)
-
-    # Nos quedamos solo con el rango reciente
-    df_events = df_events[(df_events["date"] >= min_date) & (df_events["date"] <= max_date)]
-
-    print(f"[PRED] Rango fechas (reciente): {min_date} -> {max_date}, filas={len(df_events)}")
-
-    all_cells = df_events["cell_id"].unique()
-    print(f"[PRED] Celdas con al menos un evento en lookback: {len(all_cells)}")
-
-    frames = []
-    full_idx = pd.date_range(start=min_date, end=max_date, freq="D")
-
-    for cell_id in all_cells:
-        g = df_events[df_events["cell_id"] == cell_id].copy()
-        g = g.set_index("date").sort_index()
-
-        g = g.reindex(full_idx)
-        g.index.name = "date"
-
-        g["cell_id"] = cell_id
-        g["event_count"] = g["event_count"].fillna(0).astype(int)
-        g["y_bin"] = (g["event_count"] > 0).astype(int)
-
-        frames.append(g.reset_index())
-
-    df = pd.concat(frames, ignore_index=True)
-    print(f"[PRED] Serie diaria completada (reciente): filas={len(df)}")
-
-    return df[["date", "cell_id", "event_count", "y_bin"]]
-
-
-# ============================
-# 3. ARMAR INPUT PARA INFERENCIA
-# ============================
-
-def build_inference_tensor(df: pd.DataFrame, cfg: Config):
-    df = df.sort_values(["cell_id", "date"]).reset_index(drop=True)
-
-    # Normalización por celda (igual que en training)
-    groups = []
-    for cell_id, g in df.groupby("cell_id", group_keys=False):
-        g = g.sort_values("date")
-        g["event_count_norm"] = (g["event_count"] - g["event_count"].mean()) / (g["event_count"].std() + 1e-6)
-        groups.append(g)
-    df_norm = pd.concat(groups, ignore_index=True)
-
-    last_date = df_norm["date"].max()
-
-    X_list = []
-    cell_ids = []
-
-    for cell_id, g in df_norm.groupby("cell_id"):
-        g = g.sort_values("date").reset_index(drop=True)
-        if len(g) < cfg.window_days:
-            continue
-
-        g_last = g.iloc[-cfg.window_days:]
-        values = g_last[["event_count_norm", "y_bin"]].values
-
-        X_list.append(values)
-        cell_ids.append(cell_id)
-
-    X = np.array(X_list, dtype=np.float32)
-    print(f"[PRED] Tensor completo: X.shape={X.shape}, celdas={len(cell_ids)}, last_date={last_date}")
-
-    # limitar número de celdas para inferencia (por memoria/tiempo)
-    if len(cell_ids) > cfg.max_cells_infer:
-        idx = np.random.choice(len(cell_ids), cfg.max_cells_infer, replace=False)
-        X = X[idx]
-        cell_ids = [cell_ids[i] for i in idx]
-        print(f"[PRED] Submuestreo de celdas para inferencia: {cfg.max_cells_infer} celdas")
-
-    return X, cell_ids, last_date
-
-
-# ============================
-# 4. INSERTAR EN BD
-# ============================
-
-def insert_prediction_run(cfg: Config, model_id: int, horizons, input_max_time: dt.datetime) -> int:
-    with get_conn(cfg) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO public.prediction_run (
-                    generated_at,
-                    model_id,
-                    input_max_time,
-                    horizons,
-                    mag_min,
-                    cell_km,
-                    topk_k,
-                    code_version,
-                    notes
-                )
-                SELECT
-                    now(),
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    (SELECT cell_km FROM public.prediction_cells LIMIT 1),
-                    %s,
-                    'forecast_predict_v1',
-                    'Run automático de inferencia LSTM'
-                RETURNING run_id;
-                """,
-                (model_id, input_max_time, list(horizons), cfg.mag_min, cfg.topk_k)
-            )
-            run_id = cur.fetchone()[0]
-        conn.commit()
-    return run_id
-
-
-def insert_cell_probs_and_topk(cfg: Config, run_id: int, horizon_days: int, cell_ids, probs, last_date: dt.datetime):
-    df = pd.DataFrame({"cell_id": cell_ids, "prob": probs.reshape(-1)})
-    df = df.sort_values("prob", ascending=False).reset_index(drop=True)
-
-    df["rank"] = np.arange(1, len(df) + 1)
-    df["rank_pct"] = 100.0 * (1.0 - (df["rank"] - 1) / max(1, len(df) - 1))
-    df["density"] = df["prob"]
-
-    inserted_cells = 0
-    inserted_topk = 0
-
-    with get_conn(cfg) as conn:
-        with conn.cursor() as cur:
-
-            # prediction_cell_prob
-            for _, row in df.iterrows():
-                cur.execute(
-                    """
-                    INSERT INTO public.prediction_cell_prob (
-                        run_id, cell_id, horizon_days, prob, density, rank_pct
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        run_id,
-                        int(row["cell_id"]),
-                        horizon_days,
-                        float(row["prob"]),
-                        float(row["density"]),
-                        float(row["rank_pct"]),
-                    )
-                )
-                inserted_cells += 1
-
-            # Top-K
-            topk = df.head(cfg.topk_k)
-            for _, row in topk.iterrows():
-                cur.execute(
-                    """
-                    INSERT INTO public.prediction_topk (
-                        run_id,
-                        horizon_days,
-                        rank,
-                        t_pred_start,
-                        t_pred_end,
-                        lat,
-                        lon,
-                        mag_pred,
-                        depth_pred,
-                        prob,
-                        time_conf_h,
-                        space_conf_km
-                    )
-                    SELECT
-                        %s, %s, %s,
-                        %s,
-                        %s,
-                        ST_Y(centroid) AS lat,
-                        ST_X(centroid) AS lon,
-                        %s,
-                        NULL,
-                        %s,
-                        48,
-                        75
-                    FROM public.prediction_cells
-                    WHERE cell_id = %s;
-                    """,
-                    (
-                        run_id,
-                        horizon_days,
-                        int(row["rank"]),
-                        last_date + dt.timedelta(seconds=1),
-                        last_date + dt.timedelta(days=horizon_days),
-                        cfg.mag_min + 0.5,
-                        float(row["prob"]),
-                        int(row["cell_id"]),
-                    )
-                )
-                inserted_topk += 1
-
-        conn.commit()
-
-    print(f"[PRED] Insertadas {inserted_cells} filas en prediction_cell_prob")
-    print(f"[PRED] Insertadas {inserted_topk} filas en prediction_topk (Top-{cfg.topk_k})")
-
-
-# ============================
-# 5. MAIN
-# ============================
+# ==========================
+#  MAIN
+# ==========================
 
 def main():
     cfg = Config()
-    print("[PRED] Config:", cfg)
+    try:
+        model_id, model_path, horizons, mag_min = get_active_model(cfg)
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return
 
-    model_id, model_path, horizons, mag_min = get_active_model_meta(cfg)
-    print(f"[PRED] Modelo activo: model_id={model_id}, path={model_path}, horizons={horizons}, mag_min={mag_min}")
-
-    print("[PRED] Cargando serie diaria...")
-    df = load_daily_cell_series_for_inference(cfg)
-    df["date"] = pd.to_datetime(df["date"])
-
-    X, cell_ids, last_date = build_inference_tensor(df, cfg)
-    print(f"[PRED] Tensor final para inferencia: X.shape={X.shape}, celdas={len(cell_ids)}, last_date={last_date}")
-
-    print("[PRED] Cargando modelo LSTM...")
+    window_days = 30 
+    print(f"[PRED] Iniciando inferencia. Modelo: {model_id} | Top-K: {cfg.topk_k}")
+    
+    X, cell_ids, last_input_date = build_national_tensor(cfg, mag_min, window_days)
+    print(f"[PRED] Ejecutando modelo...")
+    
     model = tf.keras.models.load_model(model_path)
+    probs = model.predict(X, batch_size=2048, verbose=1).flatten()
+    
+    last_input_ts = pd.to_datetime(last_input_date).to_pydatetime()
+    pred_start = last_input_ts + dt.timedelta(days=1) 
+    pred_end   = pred_start + dt.timedelta(days=horizons[0] - 1) + dt.timedelta(hours=23, minutes=59, seconds=59)
+    
+    print("[PRED] Procesando resultados...")
+    df_res = pd.DataFrame({"cell_id": cell_ids, "prob": probs})
+    df_res["rank_pct"] = df_res["prob"].rank(pct=True)
+    
+    topk = df_res.nlargest(cfg.topk_k, "prob")
+    
+    with get_conn(cfg) as conn:
+        ids = tuple(topk["cell_id"].tolist())
+        q_geo = f"SELECT cell_id, ST_Y(centroid) as lat, ST_X(centroid) as lon FROM prediction_cells WHERE cell_id IN {ids}"
+        df_geo = pd.read_sql_query(q_geo, conn)
+        
+        coords = list(zip(df_geo["lat"], df_geo["lon"]))
+        results = rg.search(coords)
+        
+        place_map = {}
+        for i, row in df_geo.iterrows():
+            ref_text = format_location(row["lat"], row["lon"], results[i])
+            place_map[row["cell_id"]] = ref_text
 
-    print("[PRED] Ejecutando predicciones...")
-    probs = model.predict(X, batch_size=1024, verbose=1)
-    print("[PRED] Predicciones completadas.")
-
-    horizon_days = int(horizons[0])  # por ahora solo 7 días 
-
-    input_max_time = pd.to_datetime(last_date).to_pydatetime()
-    run_id = insert_prediction_run(cfg, model_id, horizons, input_max_time)
-    print(f"[PRED] run_id creado: {run_id}")
-
-    insert_cell_probs_and_topk(cfg, run_id, horizon_days, cell_ids, probs, last_date)
-    print("[PRED] Predicciones guardadas en prediction_cell_prob y prediction_topk")
-
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO prediction_run (generated_at, model_id, input_max_time, horizons, mag_min, cell_km, topk_k)
+                VALUES (now(), %s, %s, %s, %s, 10, %s) RETURNING run_id
+            """, (model_id, last_input_ts, list(horizons), mag_min, cfg.topk_k))
+            run_id = cur.fetchone()[0]
+            
+            data_probs = [
+                (run_id, int(r.cell_id), horizons[0], float(r.prob), float(r.prob), float(r.rank_pct))
+                for r in df_res.itertuples()
+            ]
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO prediction_cell_prob (run_id, cell_id, horizon_days, prob, density, rank_pct) VALUES %s",
+                data_probs
+            )
+            
+            for i, row in enumerate(topk.itertuples(), 1):
+                place_txt = place_map.get(row.cell_id, "Zona Remota")
+                cur.execute("""
+                    INSERT INTO prediction_topk 
+                    (run_id, horizon_days, rank, t_pred_start, t_pred_end, lat, lon, mag_pred, prob, place)
+                    SELECT %s, %s, %s, %s, %s, ST_Y(centroid), ST_X(centroid), %s, %s, %s
+                    FROM prediction_cells WHERE cell_id = %s
+                """, (
+                    run_id, horizons[0], i, pred_start, pred_end, 
+                    mag_min + 0.5, row.prob, place_txt, row.cell_id
+                ))
+                
+            conn.commit()
+            print(f"[PRED] ¡Éxito! Run ID: {run_id}. {cfg.topk_k} Alertas generadas.")
 
 if __name__ == "__main__":
     main()

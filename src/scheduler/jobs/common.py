@@ -5,8 +5,9 @@ Módulo central de utilidades compartidas por los jobs del scheduler.
 
 Incluye:
 - Manejo de logs (con persistencia en archivo y salida por consola).
-- Funciones auxiliares para crear directorios, obtener hashes de archivos, 
-  realizar peticiones HTTP seguras y establecer conexión con la base de datos.
+- Funciones auxiliares para crear directorios, obtener hashes de archivos,
+  realizar peticiones HTTP seguras y establecer conexiones (sync y async) 
+  con la base de datos.
 """
 
 import os
@@ -14,20 +15,23 @@ import hashlib
 import requests
 from datetime import datetime
 from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-# Ruta del archivo de log persistente
+# Para motor asíncrono (FastAPI u otros scripts async)
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+
+
+# -------------------------------------------------------------------
+# LOGGING
+# -------------------------------------------------------------------
+
 LOG_FILE = Path("/app/artifacts/etl_logs/fetch_igp.log")
 
 
 def log(msg: str) -> None:
-    """
-    Registra un mensaje tanto en consola como en archivo.
-
-    Args:
-        msg (str): Mensaje a registrar.
-    """
+    """Registra un mensaje tanto en consola como en archivo."""
     now = datetime.now().isoformat(timespec="seconds")
     line = f"[SCHED] [{now}] {msg}"
     print(line, flush=True)
@@ -40,13 +44,15 @@ def log(msg: str) -> None:
         print(f"[SCHED] Error escribiendo log: {e}", flush=True)
 
 
+# -------------------------------------------------------------------
+# UTILIDADES DE ARCHIVOS Y HTTP
+# -------------------------------------------------------------------
+
 def ensure_dirs(path: str) -> None:
-    """Crea un directorio de forma segura si no existe."""
     os.makedirs(path, exist_ok=True)
 
 
 def file_hash(path: str) -> str | None:
-    """Calcula el hash MD5 de un archivo para comparar cambios."""
     if not os.path.exists(path):
         return None
     with open(path, "rb") as f:
@@ -54,27 +60,27 @@ def file_hash(path: str) -> str | None:
 
 
 def safe_get(url: str, params: dict, timeout: int = 180) -> requests.Response:
-    """
-    Realiza una petición GET con control de errores.
-
-    Args:
-        url (str): URL destino.
-        params (dict): Parámetros de la solicitud.
-        timeout (int): Tiempo máximo de espera (segundos).
-    """
     r = requests.get(url, params=params, timeout=timeout)
     r.raise_for_status()
     return r
 
 
-def get_engine() -> Engine:
-    """
-    Crea y devuelve un motor SQLAlchemy conectado a la base de datos.
+# -------------------------------------------------------------------
+# BASE DE DATOS
+# -------------------------------------------------------------------
 
-    Returns:
-        Engine: Conexión SQLAlchemy.
-    """
-    db_url = os.getenv("DATABASE_URL")
+def get_engine() -> Engine:
+    db_url = (
+        os.getenv("DATABASE_URL_SYNC")    # recomendado
+        or os.getenv("DATABASE_URL")      # fallback
+    )
     if not db_url:
-        raise RuntimeError("DATABASE_URL no configurada.")
-    return create_engine(db_url)
+        raise RuntimeError("DATABASE_URL_SYNC o DATABASE_URL no configurada.")
+    return create_engine(db_url, future=True, pool_pre_ping=True)
+
+
+def get_async_engine() -> AsyncEngine:
+    db_url = os.getenv("DATABASE_URL_ASYNC")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL_ASYNC no configurada para motor async.")
+    return create_async_engine(db_url, echo=False, future=True)

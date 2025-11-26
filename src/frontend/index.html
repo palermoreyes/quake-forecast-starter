@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+
+    <title>Pronóstico Sísmico Perú | QuakeForecast AI</title>
+
+    <!-- Meta SEO básica -->
+    <meta
+        name="description"
+        content="Dashboard experimental de pronóstico sísmico para el Perú. Visualiza el mapa de probabilidad de sismos, niveles de riesgo y el último sismo reportado por el IGP. Proyecto académico QuakeForecast AI (tesis UPN)."
+    >
+    <meta
+        name="keywords"
+        content="sismos Perú, pronóstico sísmico, mapa de sismos, nivel de riesgo sísmico, IGP, alerta sísmica, QuakeForecast, tesis UPN"
+    >
+    <meta name="author" content="QuakeForecast AI - Proyecto académico UPN">
+    <meta name="robots" content="index,follow">
+
+    <!-- URL canónica (cámbiala por tu dominio real cuando lo tengas) -->
+    <link rel="canonical" href="https://quakeforecast.pe/">
+
+    <!-- Favicon (tu icono actual) -->
+    <link
+        rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 x=%220.15em%22 font-size=%2290%22>⚛️</text></svg>"
+    >
+
+    <!-- Open Graph / compartir en redes -->
+    <meta property="og:title" content="Pronóstico Sísmico Perú | QuakeForecast AI">
+    <meta
+        property="og:description"
+        content="Explora el mapa de probabilidad de sismos en el Perú, los niveles de riesgo y el último sismo registrado por el IGP. Proyecto académico de investigación QuakeForecast AI."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://quakeforecast.pe/">
+    <meta property="og:site_name" content="QuakeForecast AI">
+    <meta property="og:locale" content="es_PE">
+    <!-- Si en el futuro tienes una imagen de preview, agrégala aquí:
+    <meta property="og:image" content="https://quakeforecast.pe/og-image.jpg">
+    -->
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Pronóstico Sísmico Perú | QuakeForecast AI">
+    <meta
+        name="twitter:description"
+        content="Mapa interactivo de pronóstico sísmico para Perú, con niveles de riesgo y último sismo reportado por el IGP. Proyecto académico UPN."
+    >
+    <!-- Igual que en OG, cuando tengas imagen:
+    <meta name="twitter:image" content="https://quakeforecast.pe/og-image.jpg">
+    -->
+
+    <!-- Color del navegador móvil -->
+    <meta name="theme-color" content="#020617">
+
+    <!-- CSS existentes -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <div id="map-view-container" class="active">
+        <div id="map"></div>
+
+        <div class="last-quake-container">
+            <div class="lq-header">
+                <span class="pulse-icon"></span> ÚLTIMO SISMO IGP
+            </div>
+            <div class="lq-body" id="lq-content">
+                <span class="lq-loading">Conectando...</span>
+            </div>
+            <div class="lq-footer">
+                <a href="https://ultimosismo.igp.gob.pe/" target="_blank" class="igp-link">Ver reporte oficial ↗</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-container" id="sidebar">
+        
+        <div class="sidebar-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="app-title">Quake Forecast AI</h1>
+                <span class="badge-model">LSTM v4</span>
+            </div>
+            <div class="status-indicator">
+                <span class="status-dot"></span> Sistema Operativo
+            </div>
+        </div>
+
+        <div class="run-meta-container">
+            <div class="meta-row">
+                <span class="meta-label">Actualización:</span>
+                <span class="meta-value" id="generated-date">--</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-label">Datos hasta:</span>
+                <span class="meta-value" id="input-date">--</span>
+            </div>
+            <div class="meta-separator"></div>
+            <div class="meta-row">
+                <span class="meta-label">📅 VIGENCIA DEL PRONÓSTICO:</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-value highlight" id="validity-range" style="font-size: 1.1rem;">Cargando...</span>
+            </div>
+        </div>
+
+        <div id="recommendation-box" class="alert-box" style="display:none;">
+            <div class="alert-icon">⚠️</div>
+            <div id="recommendation-text"></div>
+        </div>
+
+        <div class="list-header">Top 10 Zonas Críticas</div>
+
+        <div class="prediction-list" id="topk-list">
+            <div style="text-align: center; padding: 30px; color: #8b949e;">
+                <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer warning-footer">
+            <div style="font-weight: bold; color: #e6edf3; margin-bottom: 4px; font-size: 0.8rem;">ℹ️ INFORMACIÓN IMPORTANTE</div>
+            <div style="color: #8b949e; line-height: 1.3;">
+                Este sistema forma parte de un proyecto de investigación académica (Tesis Universitaria – UPN).<br>
+                <strong>Para alertas oficiales, siga al INDECI y al IGP.</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="mobile-nav">
+        <button class="nav-btn" onclick="switchTab('list')" id="btn-list">
+            <span class="nav-icon">📋</span> Lista
+        </button>
+        <button class="nav-btn active" onclick="switchTab('map')" id="btn-map">
+            <span class="nav-icon">🌍</span> Mapa
+        </button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

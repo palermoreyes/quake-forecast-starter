@@ -3,7 +3,6 @@
 !/ .vscode/extensions.json
 /__pycache__/
 /mlruns/
-/artifacts/
 /data/
 /pgdata/
 /.env
