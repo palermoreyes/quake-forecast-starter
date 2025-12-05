@@ -1,170 +1,72 @@
-
-[SCHED] [2025-12-03T19:24:04] Scheduler iniciado (intervalo de 120 Minutos).
-[SCHED] [2025-12-03T19:24:04] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-03T19:24:04] Descargando datos IGP desde 2025-11-30 hasta 2025-12-03
-[SCHED] [2025-12-03T19:24:04] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6979
-[SCHED] [2025-12-03T19:24:04] Archivo actualizado correctamente: /app/data/igp/landing/igp-datos-sismicos.xlsx (6,979 bytes)
-[SCHED] [2025-12-03T19:24:04] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-03T19:24:04] Datos leídos: 9 filas.
-[SCHED] [2025-12-03T19:24:04] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-03T19:24:06] Procesadas 9 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-03T19:24:06] Carga de nuevos datos completada.
-[SCHED] [2025-12-03T19:24:06] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-03T19:24:07] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-03T19:24:07] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-03T19:24:07] Ciclo completado correctamente.
-[SCHED] [2025-12-03T19:24:07] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-03T21:24:06] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-03T21:24:06] Descargando datos IGP desde 2025-11-30 hasta 2025-12-03
-[SCHED] [2025-12-03T21:24:07] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6979
-[SCHED] [2025-12-03T21:24:07] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
-[SCHED] [2025-12-03T21:24:07] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-03T21:24:09] Datos leídos: 9 filas.
-[SCHED] [2025-12-03T21:24:09] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-03T21:24:10] Procesadas 9 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-03T21:24:10] Carga de nuevos datos completada.
-[SCHED] [2025-12-03T21:24:10] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-03T21:24:11] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-03T21:24:11] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-03T21:24:11] Ciclo completado correctamente.
-[SCHED] [2025-12-03T21:24:11] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-03T23:24:12] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-03T23:24:12] Descargando datos IGP desde 2025-11-30 hasta 2025-12-03
-[SCHED] [2025-12-03T23:24:17] Error en el ciclo principal: HTTPSConnectionPool(host='ultimosismo.igp.gob.pe', port=443): Max retries exceeded with url: /api/ultimo-sismo/descargar-datos?tipoCatalogo=Instrumental&fechaInicio=2025-11-30&fechaFin=2025-12-03&minimaMagnitud=1&maximaMagnitud=9&minimaProfundidad=0&maximaProfundidad=900&latitudNorte=-1.396&latitudSur=-25.701&longitudEste=-65.624&longitudOeste=-87.382 (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x715b5d593e50>: Failed to resolve 'ultimosismo.igp.gob.pe' ([Errno -5] No address associated with hostname)"))
-[SCHED] [2025-12-03T23:24:17] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T01:24:18] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T01:24:18] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T01:24:19] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6882
-[SCHED] [2025-12-04T01:24:19] Archivo actualizado correctamente: /app/data/igp/landing/igp-datos-sismicos.xlsx (6,882 bytes)
-[SCHED] [2025-12-04T01:24:19] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T01:24:20] Datos leídos: 7 filas.
-[SCHED] [2025-12-04T01:24:20] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T01:24:21] Procesadas 7 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T01:24:21] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T01:24:21] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T01:24:21] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T01:24:21] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T01:24:21] Ciclo completado correctamente.
-[SCHED] [2025-12-04T01:24:21] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T03:07:26] Scheduler iniciado (intervalo de 120 Minutos).
-[SCHED] [2025-12-04T03:07:26] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T03:07:26] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T03:07:26] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6937
-[SCHED] [2025-12-04T03:07:26] Archivo actualizado correctamente: /app/data/igp/landing/igp-datos-sismicos.xlsx (6,937 bytes)
-[SCHED] [2025-12-04T03:07:26] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T03:07:27] Datos leídos: 8 filas.
-[SCHED] [2025-12-04T03:07:27] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T03:07:29] Procesadas 8 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T03:07:29] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T03:07:30] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T03:07:30] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T03:07:30] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T03:07:30] Ciclo completado correctamente.
-[SCHED] [2025-12-04T03:07:30] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T05:07:33] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T05:07:33] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T05:07:34] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6937
-[SCHED] [2025-12-04T05:07:34] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
-[SCHED] [2025-12-04T05:07:34] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T05:07:34] Datos leídos: 8 filas.
-[SCHED] [2025-12-04T05:07:34] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T05:07:34] Procesadas 8 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T05:07:34] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T05:07:34] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T05:07:34] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T05:07:34] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T05:07:34] Ciclo completado correctamente.
-[SCHED] [2025-12-04T05:07:34] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T07:07:35] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T07:07:35] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T07:07:35] Error en el ciclo principal: 502 Server Error: Bad Gateway for url: https://ultimosismo.igp.gob.pe/api/ultimo-sismo/descargar-datos?tipoCatalogo=Instrumental&fechaInicio=2025-12-01&fechaFin=2025-12-04&minimaMagnitud=1&maximaMagnitud=9&minimaProfundidad=0&maximaProfundidad=900&latitudNorte=-1.396&latitudSur=-25.701&longitudEste=-65.624&longitudOeste=-87.382
-[SCHED] [2025-12-04T07:07:35] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T09:07:37] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T09:07:37] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T09:07:38] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6979
-[SCHED] [2025-12-04T09:07:38] Archivo actualizado correctamente: /app/data/igp/landing/igp-datos-sismicos.xlsx (6,979 bytes)
-[SCHED] [2025-12-04T09:07:38] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T09:07:38] Datos leídos: 9 filas.
-[SCHED] [2025-12-04T09:07:38] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T09:07:39] Procesadas 9 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T09:07:39] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T09:07:39] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T09:07:39] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T09:07:39] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T09:07:39] Ciclo completado correctamente.
-[SCHED] [2025-12-04T09:07:39] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T10:00:23] Scheduler iniciado (intervalo de 120 Minutos).
-[SCHED] [2025-12-04T10:00:23] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T10:00:23] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T10:00:24] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6979
-[SCHED] [2025-12-04T10:00:24] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
-[SCHED] [2025-12-04T10:00:24] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T10:00:24] Datos leídos: 9 filas.
-[SCHED] [2025-12-04T10:00:24] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T10:00:26] Procesadas 9 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T10:00:26] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T10:00:26] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T10:00:26] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T10:00:26] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T10:00:26] Ciclo completado correctamente.
-[SCHED] [2025-12-04T10:00:26] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T12:00:30] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T12:00:30] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T12:00:31] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
-[SCHED] [2025-12-04T12:00:32] Archivo actualizado correctamente: /app/data/igp/landing/igp-datos-sismicos.xlsx (7,022 bytes)
-[SCHED] [2025-12-04T12:00:32] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T12:00:32] Datos leídos: 10 filas.
-[SCHED] [2025-12-04T12:00:32] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T12:00:33] Procesadas 10 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T12:00:33] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T12:00:33] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T12:00:33] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T12:00:33] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T12:00:33] Ciclo completado correctamente.
-[SCHED] [2025-12-04T12:00:33] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T13:04:08] Scheduler iniciado (intervalo de 120 Minutos).
-[SCHED] [2025-12-04T13:04:08] Inicio del ciclo: Extracción y Carga IGP
-[SCHED] [2025-12-04T13:04:09] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
-[SCHED] [2025-12-04T13:04:09] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
-[SCHED] [2025-12-04T13:04:09] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
-[SCHED] [2025-12-04T13:04:09] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
-[SCHED] [2025-12-04T13:04:09] Datos leídos: 10 filas.
-[SCHED] [2025-12-04T13:04:09] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
-[SCHED] [2025-12-04T13:04:11] Procesadas 10 filas (Insertadas/Actualizadas).
-[SCHED] [2025-12-04T13:04:11] Carga de nuevos datos completada.
-[SCHED] [2025-12-04T13:04:11] Mantenimiento: Buscando lugares NULL o simples...
-[SCHED] [2025-12-04T13:04:11] Mantenimiento: Todo limpio.
-[SCHED] [2025-12-04T13:04:11] Ciclo ETL finalizado con éxito.
-[SCHED] [2025-12-04T13:04:11] Ciclo completado correctamente.
-[SCHED] [2025-12-04T13:04:11] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
-[SCHED] [2025-12-04T13:15:24] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:15:24] Evaluando Run #1 (Vigencia: 2025-11-11 al 2025-11-17)
-[SCHED] [2025-12-04T13:15:24] Sismos Reales en ventana: 10
-[SCHED] [2025-12-04T13:15:24] Alertas evaluadas (Top-50): 25
-[SCHED] [2025-12-04T13:15:24] Registrando auditoría en 'validation_realworld'...
-[SCHED] [2025-12-04T13:18:33] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:18:33] Evaluando Run #1 (Vigencia: 2025-11-11 al 2025-11-17)
-[SCHED] [2025-12-04T13:18:33] Sismos Reales en ventana: 10
-[SCHED] [2025-12-04T13:18:33] Alertas evaluadas (Top-50): 25
-[SCHED] [2025-12-04T13:18:33] Registrando auditoría en 'validation_realworld'...
-[SCHED] [2025-12-04T13:20:04] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:20:04] Evaluando Run #1 (Vigencia: 2025-11-11 al 2025-11-17)
-[SCHED] [2025-12-04T13:20:04] Sismos Reales en ventana: 10
-[SCHED] [2025-12-04T13:20:04] Alertas evaluadas (Top-50): 17
-[SCHED] [2025-12-04T13:20:04] Registrando auditoría en 'validation_realworld'...
-[SCHED] [2025-12-04T13:21:51] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:21:52] Evaluando Run #1 (Vigencia: 2025-11-11 al 2025-11-17)
-[SCHED] [2025-12-04T13:21:52] Sismos Reales en ventana: 10
-[SCHED] [2025-12-04T13:21:52] Alertas evaluadas (Top-50): 25
-[SCHED] [2025-12-04T13:21:52] Registrando auditoría en 'validation_realworld'...
-[SCHED] [2025-12-04T13:27:31] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:27:31] No hay predicciones para evaluar.
-[SCHED] [2025-12-04T13:28:17] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:28:17] No hay predicciones para evaluar.
-[SCHED] [2025-12-04T13:28:52] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:28:52] Evaluando Run #1 (Vigencia: 2025-11-11 al 2025-11-17)
-[SCHED] [2025-12-04T13:28:52] Sismos Reales en ventana: 10
-[SCHED] [2025-12-04T13:28:52] Alertas evaluadas (Top-50): 25
-[SCHED] [2025-12-04T13:28:52] Registrando auditoría en 'validation_realworld'...
-[SCHED] [2025-12-04T13:33:48] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
-[SCHED] [2025-12-04T13:33:48] ⚠️ El Run #1 YA FUE VALIDADO anteriormente. Se omite el registro para evitar duplicados.
+[SCHED] [2025-12-04T15:50:40] Inicio del ciclo: Extracción y Carga IGP
+[SCHED] [2025-12-04T15:50:40] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
+[SCHED] [2025-12-04T15:50:41] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
+[SCHED] [2025-12-04T15:50:41] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[SCHED] [2025-12-04T15:50:41] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[SCHED] [2025-12-04T15:50:41] Datos leídos: 10 filas.
+[SCHED] [2025-12-04T15:50:41] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[SCHED] [2025-12-04T15:50:42] Procesadas 10 filas (Insertadas/Actualizadas).
+[SCHED] [2025-12-04T15:50:42] Carga de nuevos datos completada.
+[SCHED] [2025-12-04T15:50:42] Mantenimiento: Buscando lugares NULL o simples...
+[SCHED] [2025-12-04T15:50:42] Mantenimiento: Todo limpio.
+[SCHED] [2025-12-04T15:50:42] Ciclo ETL finalizado con éxito.
+[SCHED] [2025-12-04T15:50:42] Ciclo completado correctamente.
+[SCHED] [2025-12-04T15:50:43] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
+[SCHED] [2025-12-04T17:07:59] Scheduler iniciado (intervalo de 120 Minutos).
+[SCHED] [2025-12-04T17:07:59] Inicio del ciclo: Extracción y Carga IGP
+[SCHED] [2025-12-04T17:07:59] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
+[SCHED] [2025-12-04T17:07:59] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
+[SCHED] [2025-12-04T17:07:59] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[SCHED] [2025-12-04T17:07:59] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[SCHED] [2025-12-04T17:07:59] Datos leídos: 10 filas.
+[SCHED] [2025-12-04T17:07:59] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[SCHED] [2025-12-04T17:08:01] Procesadas 10 filas (Insertadas/Actualizadas).
+[SCHED] [2025-12-04T17:08:01] Carga de nuevos datos completada.
+[SCHED] [2025-12-04T17:08:01] Mantenimiento: Buscando lugares NULL o simples...
+[SCHED] [2025-12-04T17:08:01] Mantenimiento: Todo limpio.
+[SCHED] [2025-12-04T17:08:01] Ciclo ETL finalizado con éxito.
+[SCHED] [2025-12-04T17:08:01] Ciclo completado correctamente.
+[SCHED] [2025-12-04T17:08:01] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
+[SCHED] [2025-12-04T19:03:42] Inicio del ciclo: Extracción y Carga IGP
+[SCHED] [2025-12-04T19:03:42] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
+[SCHED] [2025-12-04T19:03:43] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
+[SCHED] [2025-12-04T19:03:43] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[SCHED] [2025-12-04T19:03:43] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[SCHED] [2025-12-04T19:03:43] Datos leídos: 10 filas.
+[SCHED] [2025-12-04T19:03:43] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[SCHED] [2025-12-04T19:03:44] Procesadas 10 filas (Insertadas/Actualizadas).
+[SCHED] [2025-12-04T19:03:44] Carga de nuevos datos completada.
+[SCHED] [2025-12-04T19:03:44] Mantenimiento: Buscando lugares NULL o simples...
+[SCHED] [2025-12-04T19:03:44] Mantenimiento: Todo limpio.
+[SCHED] [2025-12-04T19:03:44] Ciclo ETL finalizado con éxito.
+[SCHED] [2025-12-04T19:03:44] Ciclo completado correctamente.
+[SCHED] [2025-12-04T19:03:44] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
+[SCHED] [2025-12-04T20:59:17] Inicio del ciclo: Extracción y Carga IGP
+[SCHED] [2025-12-04T20:59:17] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
+[SCHED] [2025-12-04T20:59:17] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
+[SCHED] [2025-12-04T20:59:17] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[SCHED] [2025-12-04T20:59:17] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[SCHED] [2025-12-04T20:59:17] Datos leídos: 10 filas.
+[SCHED] [2025-12-04T20:59:17] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[SCHED] [2025-12-04T20:59:17] Procesadas 10 filas (Insertadas/Actualizadas).
+[SCHED] [2025-12-04T20:59:17] Carga de nuevos datos completada.
+[SCHED] [2025-12-04T20:59:17] Mantenimiento: Buscando lugares NULL o simples...
+[SCHED] [2025-12-04T20:59:17] Mantenimiento: Todo limpio.
+[SCHED] [2025-12-04T20:59:17] Ciclo ETL finalizado con éxito.
+[SCHED] [2025-12-04T20:59:17] Ciclo completado correctamente.
+[SCHED] [2025-12-04T20:59:17] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.
+[SCHED] [2025-12-04T21:11:01] Scheduler iniciado (intervalo de 120 Minutos).
+[SCHED] [2025-12-04T21:11:01] Inicio del ciclo: Extracción y Carga IGP
+[SCHED] [2025-12-04T21:11:01] Descargando datos IGP desde 2025-12-01 hasta 2025-12-04
+[SCHED] [2025-12-04T21:11:02] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 7022
+[SCHED] [2025-12-04T21:11:02] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[SCHED] [2025-12-04T21:11:02] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[SCHED] [2025-12-04T21:11:02] Datos leídos: 10 filas.
+[SCHED] [2025-12-04T21:11:02] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[SCHED] [2025-12-04T21:11:03] Procesadas 10 filas (Insertadas/Actualizadas).
+[SCHED] [2025-12-04T21:11:03] Carga de nuevos datos completada.
+[SCHED] [2025-12-04T21:11:03] Mantenimiento: Buscando lugares NULL o simples...
+[SCHED] [2025-12-04T21:11:04] Mantenimiento: Todo limpio.
+[SCHED] [2025-12-04T21:11:04] Ciclo ETL finalizado con éxito.
+[SCHED] [2025-12-04T21:11:04] Ciclo completado correctamente.
+[SCHED] [2025-12-04T21:11:04] Esperando 7200 segundos (120 Minutos) antes del siguiente ciclo.

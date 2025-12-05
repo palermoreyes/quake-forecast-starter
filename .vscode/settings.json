@@ -1,0 +1,26 @@
+{
+  // Terminal integrado: usa WSL por defecto en Windows
+  "terminal.integrated.defaultProfile.windows": "Ubuntu (WSL)",
+
+  // Python: análisis y formato
+  "python.analysis.typeCheckingMode": "basic",
+  "python.linting.enabled": true,
+  "python.testing.pytestEnabled": true,
+  "python.formatting.provider": "black",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true
+  },
+
+  // EOL y estilo
+  "files.eol": "\n",
+  "editor.rulers": [100],
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+
+  // Docker
+  "docker.dockerComposeBuild": true,
+  "docker.showStartPage": false,
+  "containers.composeBuild": true
+}

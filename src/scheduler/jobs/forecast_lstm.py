@@ -1,4 +1,4 @@
-# forecast_lstm.py (V3.3.1 - The Hybrid: Bi-LSTM + 30 Days)
+# forecast_lstm.py (V3.4 - Stabilized Deep Bi-LSTM)
 
 import os
 import json
@@ -34,17 +34,18 @@ class Config:
     val_end: dt.date = dt.date.fromisoformat(os.getenv("SPLIT_VAL_END", "2021-12-31"))
     test_end: dt.date = dt.date.fromisoformat(os.getenv("SPLIT_TEST_END", "2023-12-31"))
 
-    # VUELTA A LO BÁSICO: 30 Días (Donde está la señal fuerte)
+    # Mantenemos 30 días (La ventana probada y robusta)
     window_days: int = 30
     
-    # Batch grande para tu PC de 8 cores
-    batch_size: int = 1024
-    epochs: int = 30 
+    # Batch Size moderado para estabilidad
+    batch_size: int = 512
+    
+    # Más épocas, el Clipping hace que aprenda "lento pero seguro"
+    epochs: int = 50 
 
-    # Sampling moderado (2%)
+    # Sampling 2% (Tu balance ideal)
     keep_neg_rate: float = 0.02
 
-    # Límites seguros para RAM (aunque con 30 días esto ocupa muy poco)
     max_train_samples: int = 4000000
     max_eval_samples: int = 1000000
 
@@ -75,13 +76,15 @@ def load_wide_matrix(cfg: Config) -> pd.DataFrame:
 
     df_events["date"] = pd.to_datetime(df_events["date"])
     
-    # Pivot (float32)
+    # LOG-TRANSFORM: Clave para reducir la escala de valores extremos
+    df_events["event_count"] = np.log1p(df_events["event_count"])
+    
     wide_df = df_events.pivot(index="date", columns="cell_id", values="event_count").fillna(0).astype(np.float32)
     
     full_range = pd.date_range(wide_df.index.min(), wide_df.index.max(), freq="D")
     wide_df = wide_df.reindex(full_range, fill_value=0).astype(np.float32)
 
-    print(f"[TRAIN] Matriz base: {wide_df.shape}")
+    print(f"[TRAIN] Matriz Log-Transformed: {wide_df.shape}")
     return wide_df
 
 # ==========================
@@ -109,11 +112,10 @@ def make_sequences_fast(wide_df, cfg, means, stds, is_train=True):
     current_count = 0
     modo = "TRAIN" if is_train else "EVAL"
 
-    # SHUFFLE para evitar sesgo geográfico
     cell_indices = np.arange(num_cells)
     if is_train: np.random.shuffle(cell_indices)
 
-    print(f"[TRAIN] Generando ({modo}) límite={limit} (Shuffle ON)...")
+    print(f"[TRAIN] Generando ({modo}) límite={limit}...")
 
     for c in cell_indices:
         if current_count >= limit: break
@@ -142,15 +144,12 @@ def make_sequences_fast(wide_df, cfg, means, stds, is_train=True):
         X_cell = np.stack([X_f1[idx_keep], X_f2[idx_keep]], axis=-1)
         y_cell = y_c[idx_keep]
         
-        # Limit Check
         rem = limit - current_count
         if rem <= 0: break
         
         if len(y_cell) > rem:
-            # Priorizar positivos
             p_local = np.where(y_cell > 0.5)[0]
             n_local = np.where(y_cell <= 0.5)[0]
-            
             if len(p_local) >= rem:
                 final_idx = np.random.choice(p_local, rem, replace=False)
             else:
@@ -168,30 +167,46 @@ def make_sequences_fast(wide_df, cfg, means, stds, is_train=True):
     return np.concatenate(X_arrays).astype(np.float32), np.concatenate(y_arrays).astype(np.float32)
 
 # ==========================
-#  3. MODELO (Bi-LSTM Híbrido)
+#  3. MODELO (V3.4 - STABILIZED DEEP BI-LSTM)
 # ==========================
 
-def build_bilstm_model_v3_3(cfg: Config, n_features: int) -> tf.keras.Model:
+def build_model_v3_4(cfg: Config, n_features: int) -> tf.keras.Model:
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(cfg.window_days, n_features)),
         
-        # Bi-LSTM sobre ventana corta (30 días)
-        # Esto permite detectar patrones muy finos de secuencia
+        # CAPA 1: Bi-LSTM (128 unidades)
         tf.keras.layers.Bidirectional(
-            tf.keras.layers.LSTM(64, return_sequences=True, dropout=0.2)
+            tf.keras.layers.LSTM(128, return_sequences=True, dropout=0.3)
         ),
+        # BatchNormalization: La clave para que no colapse
+        tf.keras.layers.BatchNormalization(),
         
-        tf.keras.layers.GlobalMaxPooling1D(),
+        # CAPA 2: Bi-LSTM Compresión (64 unidades)
+        tf.keras.layers.Bidirectional(
+            tf.keras.layers.LSTM(64, return_sequences=False, dropout=0.3)
+        ),
+        tf.keras.layers.BatchNormalization(),
         
-        tf.keras.layers.Dense(32, activation="relu"),
-        tf.keras.layers.Dropout(0.3),
+        # CAPA DENSA "Wide"
+        tf.keras.layers.Dense(64, activation="gelu"), # GELU es más moderno y suave que ReLU
+        tf.keras.layers.Dropout(0.4),
+        
+        # SALIDA
         tf.keras.layers.Dense(1, activation="sigmoid")
     ])
 
-    # Learning rate un poco más alto que V3.2 porque 30 días es más fácil de aprender
-    opt = tf.keras.optimizers.Adam(learning_rate=0.001)
+    # OPTIMIZADOR CON GRADIENT CLIPPING
+    # clipnorm=1.0 corta los picos de error para que no se vaya a infinito
+    opt = tf.keras.optimizers.Adam(learning_rate=0.0001, clipnorm=1.0)
     
-    model.compile(optimizer=opt, loss="binary_crossentropy", metrics=[tf.keras.metrics.AUC(name="auc"), tf.keras.metrics.Recall(name="recall")])
+    model.compile(
+        optimizer=opt, 
+        loss="binary_crossentropy", 
+        metrics=[
+            tf.keras.metrics.AUC(name="auc"), 
+            tf.keras.metrics.Recall(name="recall")
+        ]
+    )
     return model
 
 # ==========================
@@ -211,7 +226,7 @@ def train_and_register(cfg: Config):
     means, stds = compute_norm_params(wide_train)
     cell_ids = wide_df.columns.to_numpy().tolist()
 
-    print("[TRAIN] Generando Train (V3.3.1 Hybrid)...")
+    print("[TRAIN] Generando Train (V3.4 Stable)...")
     X_train, y_train = make_sequences_fast(wide_train, cfg, means.values, stds.values, is_train=True)
     print(f"   -> Train: {X_train.shape} (Positivos: {int((y_train>0.5).sum())})")
 
@@ -223,12 +238,12 @@ def train_and_register(cfg: Config):
     wide_test = wide_df[test_mask]
     X_test, y_test = make_sequences_fast(wide_test, cfg, means.values, stds.values, is_train=False)
 
-    print("[TRAIN] Iniciando entrenamiento Bi-LSTM 30d...")
-    model = build_bilstm_model_v3_3(cfg, n_features=X_train.shape[-1])
+    print("[TRAIN] Iniciando entrenamiento V3.4...")
+    model = build_model_v3_4(cfg, n_features=X_train.shape[-1])
 
     callbacks = [
-        tf.keras.callbacks.EarlyStopping(monitor="val_auc", mode="max", patience=5, restore_best_weights=True),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2),
+        tf.keras.callbacks.EarlyStopping(monitor="val_auc", mode="max", patience=8, restore_best_weights=True),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3),
     ]
 
     model.fit(
@@ -243,16 +258,16 @@ def train_and_register(cfg: Config):
     print(f"[TEST RESULT] AUC: {res['auc']:.4f}")
 
     ts = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    model_filename = f"model_lstm_v3.3.1_hybrid_{ts}.keras"
+    model_filename = f"model_lstm_v3.4_stabilized_{ts}.keras"
     model.save(os.path.join(cfg.models_dir, model_filename))
 
     params = {
         "model_path": model_filename,
-        "class_weights": "None (Natural Sampling)",
+        "class_weights": "None (Log + Clipping + BatchNorm)",
         "norm_means": means.values.astype(float).tolist(),
         "norm_stds": stds.values.astype(float).tolist(),
         "cell_ids": cell_ids,
-        "window_days": cfg.window_days # 30
+        "window_days": cfg.window_days
     }
     metrics = {"test": {k: float(v) for k, v in res.items()}}
 
@@ -262,10 +277,10 @@ def train_and_register(cfg: Config):
             cur.execute("""
                 INSERT INTO public.model_registry 
                 (is_active, in_staging, framework, tag, train_start, train_end, horizons, mag_min, params_json, metrics_json, data_cutoff, notes)
-                VALUES (TRUE, FALSE, 'keras', 'LSTM_V3.3.1_Hybrid', '1960-01-01', %s, %s, %s, %s::jsonb, %s::jsonb, %s, 'V3.3.1: Hybrid (30d + Bi-LSTM)')
+                VALUES (TRUE, FALSE, 'keras', 'LSTM_V3.4_Stabilized', '1960-01-01', %s, %s, %s, %s::jsonb, %s::jsonb, %s, 'V3.4: Deep Bi-LSTM Stabilized (BN + Clip)')
             """, (cfg.train_end, list(cfg.horizons), cfg.mag_min, json.dumps(params), json.dumps(metrics), cfg.test_end))
             conn.commit()
-            print("[TRAIN] Modelo V3.3.1 Registrado.")
+            print("[TRAIN] Modelo V3.4 Registrado.")
 
 if __name__ == "__main__":
     train_and_register(Config())
