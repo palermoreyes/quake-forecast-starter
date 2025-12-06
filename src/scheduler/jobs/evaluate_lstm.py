@@ -120,7 +120,9 @@ def main():
 
     # 4. Generar Test
     print("[EVAL] Generando secuencias de prueba...")
-    X_test, y_test = make_sequences_fast(df_test, cfg, means=means.values, stds=stds.values, is_train=False)
+    X_test, y_test = make_sequences_fast(df_test, cfg, 
+                                         means=means,
+                                         stds=stds, is_train=False)
     print(f"[EVAL] Datos Test: {X_test.shape}")
 
     # 5. CARGAR MODELO ACTIVO (CORRECCIÓN)

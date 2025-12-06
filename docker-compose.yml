@@ -3,13 +3,11 @@ services:
     image: postgis/postgis:15-3.4
     container_name: quake_db
     restart: unless-stopped
-    # Optimización: Aumentamos la memoria compartida para consultas geoespaciales pesadas
-    shm_size: '1gb'
+    shm_size: "1gb"
     environment:
       POSTGRES_DB: quake
       POSTGRES_USER: quake
       POSTGRES_PASSWORD: changeme
-      # Optimización Postgres: Ajustes básicos para aprovechar RAM sin ahogar al sistema
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -25,6 +23,7 @@ services:
   api:
     build:
       context: ./src/api
+      dockerfile: Dockerfile
       args:
         PYTHON_VERSION: 3.11-slim
     container_name: quake_api
@@ -32,13 +31,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Mantenemos 1 worker si es desarrollo, pero si la API hace inferencia, 
-    # considera subir el timeout si el modelo tarda en responder.
     command: uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --timeout-keep-alive 60
+    volumes:
+      - ./artifacts:/app/artifacts:ro   # La API solo lee modelos
     ports:
       - "8000:8000"
-    volumes:
-      - ./artifacts:/app/artifacts:ro # Solo lectura: La API lee el modelo, no lo entrena
     restart: unless-stopped
 
   scheduler:
@@ -53,39 +50,16 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./artifacts:/app/artifacts
-      - ./data:/app/data
+      - ./artifacts:/app/artifacts      # Aquí se guardan los modelos .keras
+      - ./data:/app/data                # Si usas archivos adicionales
     restart: unless-stopped
-
-  # --- NUEVO SERVICIO DEDICADO PARA ENTRENAMIENTO ---
-  trainer:
-    build:
-      context: ./src/scheduler  # Asumo que el código de entrenamiento está aquí o en una carpeta 'training'
-      dockerfile: Dockerfile    # Puedes necesitar un Dockerfile diferente con librerías de Data Science
-      args:
-        PYTHON_VERSION: 3.11-slim
-    container_name: quake_trainer
-    # CRÍTICO PARA IA: Aumenta la memoria compartida para evitar errores en DataLoaders
-    shm_size: '8gb' 
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./artifacts:/app/artifacts # Escritura: Aquí guardará el modelo .h5 o .pt
-      - ./data:/app/data           # Lectura: Datos crudos
-      - ./src:/app/src             # Desarrollo: Para editar código sin reconstruir
-    # Comando para mantener el contenedor vivo o ejecutar el script de entrenamiento
-    command: python -u src/training/train_model.py 
-    # Configuración de Recursos y GPU
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: "no" # No reiniciar automáticamente si termina el entrenamiento
+    # Ajustes para que TensorFlow/Numpy usen bien los cores de la VM
+    environment:
+      OMP_NUM_THREADS: "8"              # Ajusta al número de vCPUs reales (por ej. 8, 16, etc.)
+      TF_NUM_INTRAOP_THREADS: "8"
+      TF_NUM_INTEROP_THREADS: "2"
+    # Si EN EL FUTURO usas imagen con soporte GPU + drivers NVIDIA en la VM:
+    # gpus: all
 
   nginx:
     image: nginx:alpine
