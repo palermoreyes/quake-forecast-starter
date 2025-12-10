@@ -244,3 +244,17 @@
 [2025-12-10 00:48:27] [INFO] [SCHED] Sismos Reales en ventana: 0
 [2025-12-10 00:48:27] [INFO] [SCHED] Alertas evaluadas (Top-50): 25
 [2025-12-10 00:48:27] [INFO] [SCHED] Registrando auditoría en 'validation_realworld'...
+[2025-12-10 01:04:59] [INFO] [SCHED] ⏰ Inicio del ciclo programado: Extracción y Carga IGP
+[2025-12-10 01:04:59] [INFO] [SCHED] Descargando datos IGP desde 2025-12-07 hasta 2025-12-10
+[2025-12-10 01:05:00] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6865
+[2025-12-10 01:05:00] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-10 01:05:00] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-10 01:05:00] [INFO] [SCHED] Datos leídos: 7 filas.
+[2025-12-10 01:05:00] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-10 01:05:00] [INFO] [SCHED] Procesadas 7 filas (Insertadas/Actualizadas).
+[2025-12-10 01:05:00] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-10 01:05:00] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-10 01:05:01] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-10 01:05:01] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-10 01:05:01] [INFO] [SCHED] Ciclo completado correctamente.
+[2025-12-10 01:05:01] [INFO] [SCHED] 😴 Durmiendo 3598s hasta la próxima sincronización: 02:05:00
