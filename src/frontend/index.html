@@ -1,64 +1,19 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-    <head>
-    <meta charset="UTF-8">
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    >
+<head>
+    <meta charset="utf-8">
+    <title>Quake Forecast AI – Pronóstico Sísmico Perú</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Pronóstico Sísmico Perú | QuakeForecast AI</title>
-
-    <!-- Meta SEO básica -->
-    <meta
-        name="description"
-        content="Dashboard experimental de pronóstico sísmico para el Perú. Visualiza el mapa de probabilidad de sismos, niveles de riesgo y el último sismo reportado por el IGP. Proyecto académico QuakeForecast AI (tesis UPN)."
-    >
-    <meta
-        name="keywords"
-        content="sismos Perú, pronóstico sísmico, mapa de sismos, nivel de riesgo sísmico, IGP, alerta sísmica, QuakeForecast, tesis UPN"
-    >
-    <meta name="author" content="QuakeForecast AI - Proyecto académico UPN">
-    <meta name="robots" content="index,follow">
-
-    <!-- URL canónica (cámbiala por tu dominio real cuando lo tengas) -->
-    <link rel="canonical" href="https://quakeforecast.pe/">
-
-    <!-- Favicon (tu icono actual) -->
-    <link
-        rel="icon"
-        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 x=%220.15em%22 font-size=%2290%22>⚛️</text></svg>"
-    >
-
-    <!-- Open Graph / compartir en redes -->
-    <meta property="og:title" content="Pronóstico Sísmico Perú | QuakeForecast AI">
-    <meta
-        property="og:description"
-        content="Explora el mapa de probabilidad de sismos en el Perú, los niveles de riesgo y el último sismo registrado por el IGP. Proyecto académico de investigación QuakeForecast AI."
-    >
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://quakeforecast.pe/">
-    <meta property="og:site_name" content="QuakeForecast AI">
-    <meta property="og:locale" content="es_PE">
-    <!-- Si en el futuro tienes una imagen de preview, agrégala aquí:
-    <meta property="og:image" content="https://quakeforecast.pe/og-image.jpg">
-    -->
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Pronóstico Sísmico Perú | QuakeForecast AI">
-    <meta
-        name="twitter:description"
-        content="Mapa interactivo de pronóstico sísmico para Perú, con niveles de riesgo y último sismo reportado por el IGP. Proyecto académico UPN."
-    >
-    <!-- Igual que en OG, cuando tengas imagen:
-    <meta name="twitter:image" content="https://quakeforecast.pe/og-image.jpg">
-    -->
+    <!-- SEO básico -->
+    <meta name="description" content="Visualización experimental de pronósticos sísmicos para el Perú usando modelos LSTM. Proyecto académico, no oficial.">
+    <meta name="author" content="Palermo Reyes">
+    <meta name="keywords" content="sismos, perú, predicción sísmica, LSTM, machine learning, IGP">
 
     <!-- Color del navegador móvil -->
     <meta name="theme-color" content="#020617">
 
-    <!-- CSS existentes -->
+    <!-- CSS externos -->
     <link
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -67,39 +22,62 @@
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
+    <!-- CSS propio -->
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
+    <!-- Vista mapa -->
     <div id="map-view-container" class="active">
-        <div id="map"></div>
+        <div id="map" role="application" aria-label="Mapa de riesgo sísmico"></div>
 
-        <div class="last-quake-container">
+        <!-- Widget Último Sismo IGP -->
+        <div class="last-quake-container" role="complementary" aria-label="Último sismo registrado">
             <div class="lq-header">
-                <span class="pulse-icon"></span> ÚLTIMO SISMO IGP
+                <span class="pulse-icon" aria-hidden="true"></span> ÚLTIMO SISMO IGP
             </div>
             <div class="lq-body" id="lq-content">
                 <span class="lq-loading">Conectando...</span>
             </div>
             <div class="lq-footer">
-                <a href="https://ultimosismo.igp.gob.pe/" target="_blank" class="igp-link">Ver reporte oficial ↗</a>
+                <a href="https://ultimosismo.igp.gob.pe/" target="_blank" class="igp-link" rel="noopener noreferrer">
+                    Ver reporte oficial ↗
+                </a>
             </div>
+        </div>
+
+        <!-- Indicador de carga general -->
+        <div id="loading-overlay" class="loading-overlay" style="display:none;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando datos...</span>
+            </div>
+            <p class="mt-2">Cargando pronósticos...</p>
+        </div>
+
+        <!-- Toast de error -->
+        <div id="error-toast" class="error-toast" style="display:none;" role="alert" aria-live="assertive">
+            <div class="error-icon">⚠️</div>
+            <div id="error-message"></div>
+            <button class="error-close" onclick="closeErrorToast()" aria-label="Cerrar mensaje de error">×</button>
         </div>
     </div>
 
+    <!-- Sidebar / Panel derecho -->
     <div class="sidebar-container" id="sidebar">
         
+        <!-- Header -->
         <div class="sidebar-header">
             <div class="d-flex justify-content-between align-items-center">
                 <h1 class="app-title">Quake Forecast AI</h1>
-                <span class="badge-model">LSTM v4</span>
+                <span class="badge-model" id="model-badge">Cargando...</span>
             </div>
             <div class="status-indicator">
                 <span class="status-dot"></span> Sistema Operativo
             </div>
         </div>
 
+        <!-- Metadatos de corrida -->
         <div class="run-meta-container">
             <div class="meta-row">
                 <span class="meta-label">Actualización:</span>
@@ -114,41 +92,153 @@
                 <span class="meta-label">📅 VIGENCIA DEL PRONÓSTICO:</span>
             </div>
             <div class="meta-row">
-                <span class="meta-value highlight" id="validity-range" style="font-size: 1.1rem;">Cargando...</span>
+                <span class="meta-value highlight" id="validity-range" style="font-size: 1.1rem;">
+                    Cargando...
+                </span>
             </div>
         </div>
 
-        <div id="recommendation-box" class="alert-box" style="display:none;">
-            <div class="alert-icon">⚠️</div>
+        <!-- Recuadro de recomendación -->
+        <div id="recommendation-box" class="alert-box" style="display:none;" role="alert">
+            <div class="alert-icon" aria-hidden="true">⚠️</div>
             <div id="recommendation-text"></div>
         </div>
 
-        <div class="list-header">Top 10 Zonas Críticas</div>
+        <!-- Tabs de modo (Ciudadanía / Panel científico) -->
+        <div class="mode-tabs" role="tablist">
+            <button class="mode-tab active" data-mode="citizen" id="tab-citizen" role="tab" aria-selected="true" aria-controls="citizen-panel">
+                Visión ciudadana
+            </button>
+            <button class="mode-tab" data-mode="scientific" id="tab-scientific" role="tab" aria-selected="false" aria-controls="scientific-panel">
+                Panel científico
+            </button>
+        </div>
 
-        <div class="prediction-list" id="topk-list">
-            <div style="text-align: center; padding: 30px; color: #8b949e;">
-                <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
+        <!-- PANEL CIUDADANO -->
+        <div id="citizen-panel" role="tabpanel" aria-labelledby="tab-citizen">
+            <div class="list-header" id="topk-header">
+                <span id="zones-count">Cargando zonas...</span>
+                <button id="refresh-btn" class="refresh-btn" onclick="refreshData()" aria-label="Actualizar datos" title="Actualizar datos">
+                    🔄
+                </button>
+            </div>
+
+            <!-- Barra de búsqueda y filtros -->
+            <div class="search-filter-container">
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    class="search-input" 
+                    placeholder="Buscar por lugar, coordenadas..."
+                    aria-label="Buscar zonas"
+                >
+                <select id="filter-risk" class="filter-select" aria-label="Filtrar por nivel de riesgo">
+                    <option value="all">Todos los niveles</option>
+                    <option value="critical">Crítico (≥30%)</option>
+                    <option value="very-high">Muy alto (20-30%)</option>
+                    <option value="high">Alto (12-20%)</option>
+                    <option value="moderate">Leve (5-12%)</option>
+                </select>
+            </div>
+
+            <div class="prediction-list" id="topk-list">
+                <div style="text-align: center; padding: 30px; color: #8b949e;">
+                    <div class="spinner-border text-primary spinner-border-sm" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer warning-footer">
+                <div style="font-weight: bold; color: #e6edf3; margin-bottom: 4px; font-size: 0.8rem;">
+                    ℹ️ INFORMACIÓN IMPORTANTE
+                </div>
+                <div style="color: #8b949e; line-height: 1.3;">
+                    Este sistema forma parte de un proyecto de investigación académica
+                    (Tesis Universitaria – UPN).<br>
+                    <strong>Para alertas oficiales, siga al INDECI y al IGP.</strong>
+                </div>
             </div>
         </div>
 
-        <div class="sidebar-footer warning-footer">
-            <div style="font-weight: bold; color: #e6edf3; margin-bottom: 4px; font-size: 0.8rem;">ℹ️ INFORMACIÓN IMPORTANTE</div>
-            <div style="color: #8b949e; line-height: 1.3;">
-                Este sistema forma parte de un proyecto de investigación académica (Tesis Universitaria – UPN).<br>
-                <strong>Para alertas oficiales, siga al INDECI y al IGP.</strong>
+        <!-- PANEL CIENTÍFICO -->
+        <div id="scientific-panel" class="hidden" role="tabpanel" aria-labelledby="tab-scientific">
+            <div class="sci-header">
+                <h2 class="sci-title">Panel científico</h2>
+                <p class="sci-subtitle">
+                    Resumen técnico del pronóstico actual
+                    (modelo de investigación, no operativo oficial).
+                </p>
+            </div>
+
+            <div class="sci-grid">
+                <div class="sci-item">
+                    <span class="sci-label">Modelo activo:</span>
+                    <span class="sci-value" id="sci-model">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Total de zonas analizadas:</span>
+                    <span class="sci-value" id="sci-total">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Zonas visibles en mapa:</span>
+                    <span class="sci-value" id="sci-visible">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Prob. máxima detectada:</span>
+                    <span class="sci-value" id="sci-maxprob">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Prob. media (visibles):</span>
+                    <span class="sci-value" id="sci-avgprob">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Umbral operativo (F1 óptimo):</span>
+                    <span class="sci-value" id="sci-threshold">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Zonas ≥ umbral:</span>
+                    <span class="sci-value" id="sci-above">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Rango latitudinal:</span>
+                    <span class="sci-value" id="sci-lat-range">--</span>
+                </div>
+                <div class="sci-item">
+                    <span class="sci-label">Rango longitudinal:</span>
+                    <span class="sci-value" id="sci-lon-range">--</span>
+                </div>
+            </div>
+
+            <div class="sci-notes">
+                <p>
+                    • Las probabilidades mostradas son <strong>scores relativos</strong> del modelo
+                    para sismos ≥ M4.0 en una ventana de 7 días, no una probabilidad física exacta.
+                </p>
+                <p>
+                    • El umbral operativo proviene de la calibración
+                    del modelo en un conjunto de prueba histórico, maximizando el F1-Score.
+                </p>
+                <p>
+                    • Este panel está diseñado para uso académico y científico:
+                    interpretar desempeño, distribución espacial del riesgo y
+                    comportamiento del modelo.
+                </p>
             </div>
         </div>
     </div>
 
-    <div class="mobile-nav">
-        <button class="nav-btn" onclick="switchTab('list')" id="btn-list">
-            <span class="nav-icon">📋</span> Lista
+    <!-- Navegación móvil (mapa / panel) -->
+    <div class="mobile-nav" role="navigation">
+        <button class="nav-btn" onclick="switchTab('list')" id="btn-list" aria-label="Ver lista de zonas">
+            <span class="nav-icon" aria-hidden="true">📋</span> Lista
         </button>
-        <button class="nav-btn active" onclick="switchTab('map')" id="btn-map">
-            <span class="nav-icon">🌍</span> Mapa
+        <button class="nav-btn active" onclick="switchTab('map')" id="btn-map" aria-label="Ver mapa">
+            <span class="nav-icon" aria-hidden="true">🌎</span> Mapa
         </button>
     </div>
 
+    <!-- JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="script.js"></script>
 </body>

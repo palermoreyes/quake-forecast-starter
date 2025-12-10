@@ -1,0 +1,95 @@
+[2025-12-09 20:40:24] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:40:24] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:40:24] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:40:24] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:40:24] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:40:24] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:40:24] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:40:24] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:40:26] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:40:26] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:40:26] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:40:26] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:40:26] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:40:26] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:40:26] [INFO] [SCHED] 😴 Durmiendo 1473s hasta la próxima sincronización: 21:05:00
+[2025-12-09 20:40:38] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:40:38] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:40:38] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:40:38] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:40:38] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:40:38] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:40:38] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:40:38] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:40:39] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:40:39] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:40:39] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:40:39] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:40:39] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:40:39] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:40:39] [INFO] [SCHED] 😴 Durmiendo 1460s hasta la próxima sincronización: 21:05:00
+[2025-12-09 20:47:16] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:47:16] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:47:16] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:47:16] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:47:16] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:47:16] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:47:16] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:47:16] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:47:18] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:47:18] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:47:18] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:47:18] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:47:18] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:47:18] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:47:18] [INFO] [SCHED] 😴 Durmiendo 1061s hasta la próxima sincronización: 21:05:00
+[2025-12-09 20:47:32] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:47:32] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:47:32] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:47:32] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:47:32] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:47:32] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:47:32] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:47:32] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:47:33] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:47:33] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:47:33] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:47:33] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:47:33] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:47:33] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:47:33] [INFO] [SCHED] 😴 Durmiendo 1046s hasta la próxima sincronización: 21:05:00
+[2025-12-09 20:48:42] [INFO] [SCHED] === INICIANDO VALIDACIÓN (HISTÓRICO) ===
+[2025-12-09 20:48:43] [INFO] [SCHED] Evaluando Run #1 (Vigencia: 2025-12-09 al 2025-12-15)
+[2025-12-09 20:48:43] [INFO] [SCHED] Sismos Reales en ventana: 2
+[2025-12-09 20:48:43] [INFO] [SCHED] Alertas evaluadas (Top-50): 25
+[2025-12-09 20:48:43] [INFO] [SCHED] Registrando auditoría en 'validation_realworld'...
+[2025-12-09 20:53:11] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:53:11] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:53:11] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:53:11] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:53:11] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:53:11] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:53:11] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:53:11] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:53:13] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:53:13] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:53:13] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:53:13] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:53:13] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:53:13] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:53:13] [INFO] [SCHED] 😴 Durmiendo 706s hasta la próxima sincronización: 21:05:00
+[2025-12-09 20:53:27] [INFO] [SCHED] Scheduler INTELIGENTE iniciado (Sincronizado al minuto 05 de cada hora).
+[2025-12-09 20:53:27] [INFO] [SCHED] ⚡ Ejecución inicial de arranque...
+[2025-12-09 20:53:27] [INFO] [SCHED] Descargando datos IGP desde 2025-12-06 hasta 2025-12-09
+[2025-12-09 20:53:28] [INFO] [SCHED] HTTP 200 | Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | bytes: 6956
+[2025-12-09 20:53:28] [INFO] [SCHED] Archivo sin cambios (hash idéntico). No se reemplaza el existente.
+[2025-12-09 20:53:28] [INFO] [SCHED] Inicio de ciclo ETL IGP V3 (Carga + Geocoding Avanzado)
+[2025-12-09 20:53:28] [INFO] [SCHED] Datos leídos: 9 filas.
+[2025-12-09 20:53:28] [INFO] [SCHED] Calculando ubicaciones detalladas (Reverse Geocoding + Math)...
+[2025-12-09 20:53:29] [INFO] [SCHED] Procesadas 9 filas (Insertadas/Actualizadas).
+[2025-12-09 20:53:29] [INFO] [SCHED] Carga de nuevos datos completada.
+[2025-12-09 20:53:29] [INFO] [SCHED] Mantenimiento: Buscando lugares NULL o simples...
+[2025-12-09 20:53:29] [INFO] [SCHED] Mantenimiento: Todo limpio.
+[2025-12-09 20:53:29] [INFO] [SCHED] Ciclo ETL finalizado con éxito.
+[2025-12-09 20:53:29] [INFO] [SCHED] Ciclo inicial completado.
+[2025-12-09 20:53:29] [INFO] [SCHED] 😴 Durmiendo 690s hasta la próxima sincronización: 21:05:00

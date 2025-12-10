@@ -1,21 +1,148 @@
 // src/frontend/script.js
 
-// 1. Configuración Inicial INTELIGENTE
-const isMobile = window.innerWidth < 768;
+// ============================================================================
+// CONFIGURACIÓN Y CONSTANTES
+// ============================================================================
 
-const INITIAL_VIEW = { 
-    lat: -9.19, 
-    lon: -75.01, 
-    // CAMBIO: Zoom 5.5 para móvil (punto medio perfecto)
-    zoom: isMobile ? 5.5 : 6 
+const CONFIG = {
+    INITIAL_VIEW: {
+        lat: -9.19,
+        lon: -75.01,
+        zoom: window.innerWidth < 768 ? 5.5 : 6
+    },
+    OPERATIVE_THRESHOLD: 0.12,
+    RISK_LEVELS: {
+        CRITICAL: { min: 0.30, color: '#ff0000', label: 'Crítico' },
+        VERY_HIGH: { min: 0.20, color: '#ff4d4d', label: 'Muy alto' },
+        HIGH: { min: 0.12, color: '#ff9f1c', label: 'Alto operativo' },
+        MODERATE: { min: 0.05, color: '#ffeb3b', label: 'Leve' },
+        LOW: { min: 0, color: 'transparent', label: 'Bajo' }
+    },
+    RETRY_ATTEMPTS: 3,
+    RETRY_DELAY: 2000
 };
 
-// CAMBIO: zoomSnap 0.5 permite niveles intermedios
-const map = L.map('map', { 
+// ============================================================================
+// ESTADO GLOBAL
+// ============================================================================
+
+let globalState = {
+    allZones: [],
+    filteredZones: [],
+    mapMarkers: L.layerGroup(),
+    lastEventMarker: null,
+    isLoading: false
+};
+
+// ============================================================================
+// UTILIDADES
+// ============================================================================
+
+function sanitizeHTML(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatDatePE(isoString) {
+    if (!isoString) return '--';
+    return new Date(isoString).toLocaleString('es-PE', {
+        timeZone: 'America/Lima',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
+
+function formatDateShort(isoString) {
+    if (!isoString) return '--';
+    return new Date(isoString).toLocaleDateString('es-PE', {
+        timeZone: 'America/Lima',
+        day: 'numeric',
+        month: 'short'
+    });
+}
+
+function getColor(prob) {
+    for (const [key, level] of Object.entries(CONFIG.RISK_LEVELS)) {
+        if (prob >= level.min) return level.color;
+    }
+    return CONFIG.RISK_LEVELS.LOW.color;
+}
+
+function getRiskLevel(prob) {
+    for (const [key, level] of Object.entries(CONFIG.RISK_LEVELS)) {
+        if (prob >= level.min) return level.label;
+    }
+    return CONFIG.RISK_LEVELS.LOW.label;
+}
+
+function showError(message, duration = 5000) {
+    const toast = document.getElementById('error-toast');
+    const messageEl = document.getElementById('error-message');
+    
+    if (toast && messageEl) {
+        messageEl.textContent = message;
+        toast.style.display = 'flex';
+        
+        if (duration > 0) {
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, duration);
+        }
+    }
+}
+
+function closeErrorToast() {
+    const toast = document.getElementById('error-toast');
+    if (toast) toast.style.display = 'none';
+}
+
+function showLoading(show = true) {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.style.display = show ? 'block' : 'none';
+    }
+    globalState.isLoading = show;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+async function fetchWithRetry(url, options = {}, retries = CONFIG.RETRY_ATTEMPTS) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
+        }
+    }
+}
+
+// ============================================================================
+// INICIALIZACIÓN DEL MAPA
+// ============================================================================
+
+const map = L.map('map', {
     zoomControl: false,
-    zoomSnap: 0.5, 
+    zoomSnap: 0.5,
     zoomDelta: 0.5
-}).setView([INITIAL_VIEW.lat, INITIAL_VIEW.lon], INITIAL_VIEW.zoom); 
+}).setView([CONFIG.INITIAL_VIEW.lat, CONFIG.INITIAL_VIEW.lon], CONFIG.INITIAL_VIEW.zoom);
 
 L.control.zoom({ position: 'topleft' }).addTo(map);
 
@@ -25,23 +152,42 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19
 }).addTo(map);
 
-// Botón Restaurar
+// Agregar capa de marcadores al mapa
+globalState.mapMarkers.addTo(map);
+
+// Botón "Home"
 const HomeControl = L.Control.extend({
     options: { position: 'topleft' },
-    onAdd: function(map) {
-        const c = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        c.innerHTML = '🌍'; 
-        c.title = "Restaurar Vista Nacional";
-        c.onclick = function(){ 
-            const z = window.innerWidth < 768 ? 5.5 : 6;
-            map.flyTo([INITIAL_VIEW.lat, INITIAL_VIEW.lon], z, { duration: 1.5 }); 
-        }; 
-        return c;
+    onAdd: function () {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        container.innerHTML = '🌎';
+        container.title = 'Restaurar Vista Nacional';
+        container.setAttribute('role', 'button');
+        container.setAttribute('aria-label', 'Restaurar vista al mapa completo de Perú');
+        container.tabIndex = 0;
+        
+        const resetView = () => {
+            const zoom = window.innerWidth < 768 ? 5.5 : 6;
+            map.flyTo([CONFIG.INITIAL_VIEW.lat, CONFIG.INITIAL_VIEW.lon], zoom, { duration: 1.5 });
+        };
+        
+        container.onclick = resetView;
+        container.onkeypress = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                resetView();
+            }
+        };
+        
+        return container;
     }
 });
 map.addControl(new HomeControl());
 
-// --- LÓGICA DE PESTAÑAS (MÓVIL) ---
+// ============================================================================
+// NAVEGACIÓN Y UI
+// ============================================================================
+
 function switchTab(tab) {
     const mapCont = document.getElementById('map-view-container');
     const listCont = document.getElementById('sidebar');
@@ -49,103 +195,591 @@ function switchTab(tab) {
     const btnList = document.getElementById('btn-list');
 
     if (tab === 'map') {
-        mapCont.classList.add('active');
-        listCont.classList.remove('active');
-        btnMap.classList.add('active');
-        btnList.classList.remove('active');
-        map.invalidateSize();
+        mapCont?.classList.add('active');
+        listCont?.classList.remove('active');
+        btnMap?.classList.add('active');
+        btnList?.classList.remove('active');
+        setTimeout(() => map.invalidateSize(), 100);
     } else {
-        mapCont.classList.remove('active');
-        listCont.classList.add('active');
-        btnList.classList.add('active');
-        btnMap.classList.remove('active');
+        mapCont?.classList.remove('active');
+        listCont?.classList.add('active');
+        btnList?.classList.add('active');
+        btnMap?.classList.remove('active');
     }
 }
 
-// Utilitarios
-function formatDatePE(isoString) { if (!isoString) return "--"; return new Date(isoString).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
-function getColor(prob) { return prob > 0.95 ? '#ff0000' : prob > 0.85 ? '#ff4d4d' : prob > 0.70 ? '#ff9f1c' : prob > 0.55 ? '#ffeb3b' : 'transparent'; }
+function initModeTabs() {
+    const tabs = document.querySelectorAll('.mode-tab');
+    const citizenPanel = document.getElementById('citizen-panel');
+    const scientificPanel = document.getElementById('scientific-panel');
 
-// 1. Cargar Mapa
-fetch('/api/forecast/latest').then(r => r.json()).then(data => {
-    L.geoJson(data, {
-        pointToLayer: (feature, latlng) => {
-            if (feature.properties.prob < 0.55) return null;
-            return L.circleMarker(latlng, { radius: 7, fillColor: getColor(feature.properties.prob), color: "#000", weight: 1, opacity: 1, fillOpacity: 0.9 });
-        },
-        onEachFeature: (feature, layer) => {
-            if (layer) {
-                const p = (feature.properties.prob * 100).toFixed(1); const lat = feature.geometry.coordinates[1].toFixed(3); const lon = feature.geometry.coordinates[0].toFixed(3); const col = getColor(feature.properties.prob);
-                layer.bindPopup(`<div class="popup-dark"><div class="popup-header" style="color:${col}">RIESGO: ${p}%</div><div class="popup-row">Celda: <strong>${feature.properties.cell_id}</strong></div><div style="margin-top:8px;"><a href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}" target="_blank" style="font-size:0.75rem;text-decoration:none;color:#58a6ff;border:1px solid #58a6ff;padding:2px 6px;border-radius:4px;">Ver en Mapa 🌍</a></div></div>`);
+    if (!tabs.length || !citizenPanel || !scientificPanel) return;
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+
+            const mode = tab.dataset.mode;
+            if (mode === 'scientific') {
+                citizenPanel.classList.add('hidden');
+                scientificPanel.classList.remove('hidden');
+            } else {
+                citizenPanel.classList.remove('hidden');
+                scientificPanel.classList.add('hidden');
             }
-        }
-    }).addTo(map);
-});
+        });
+    });
+}
 
-// 2. Widget Sismo (CON LINK IGP)
-fetch('/api/forecast/last-event').then(r => r.json()).then(event => {
-    if (!event) { document.getElementById('lq-content').innerHTML = 'Sin datos.'; return; }
+// ============================================================================
+// RENDERIZADO DE ZONAS
+// ============================================================================
+
+function renderZonesList(zones) {
+    const list = document.getElementById('topk-list');
+    if (!list) return;
+
+    if (!zones || zones.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <p>No se encontraron zonas con los filtros actuales</p>
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = '';
     
-    document.getElementById('lq-content').innerHTML = `
-        <div class="d-flex align-items-center justify-content-center" style="min-width: 60px;">
-            <div class="lq-mag">${event.magnitude.toFixed(1)}</div>
-            <div class="lq-unit ms-1" style="font-size:0.65rem; color:#8b949e; line-height:1.1;">MAG<br>MW</div>
-        </div>
+    zones.forEach((item, index) => {
+        const probPct = (item.prob * 100).toFixed(1);
+        const rank = index + 1;
+        const riskColor = getColor(item.prob);
+        const riskLevel = getRiskLevel(item.prob);
+        const safePlace = sanitizeHTML(item.place || 'Ubicación desconocida');
+
+        const div = document.createElement('div');
+        div.className = 'pred-item';
+        div.setAttribute('role', 'button');
+        div.setAttribute('tabindex', '0');
+        div.setAttribute('aria-label', `Zona ${rank}: ${safePlace}, Riesgo ${probPct}%`);
         
-        <div class="lq-details ms-2" style="flex-grow:1; text-align:right;">
-            <div class="lq-row" style="justify-content:flex-end;"><span class="lq-icon">📍</span> ${event.place}</div>
-            <div class="lq-row" style="justify-content:flex-end;">
-                <span class="lq-icon">🕒</span> ${formatDatePE(event.event_time_utc)}
+        div.innerHTML = `
+            <div class="rank-num"
+                 style="color:${riskColor}; text-shadow:0 0 10px ${riskColor}40;">
+                #${rank}
             </div>
-            <div style="margin-top:2px;">
-                <a href="https://ultimosismo.igp.gob.pe/" target="_blank" class="btn-igp-mini" style="color:#58a6ff; font-size:0.65rem; text-decoration:none;">
-                    🌐 Ver en IGP ↗
-                </a>
+            <div class="location-info">
+                <div style="font-weight:bold; color:#fff; font-size:0.9rem; margin-bottom:2px;">
+                    ${safePlace}
+                    <a href="https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lon}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       style="text-decoration:none;"
+                       aria-label="Ver en Google Maps">
+                        📍
+                    </a>
+                </div>
+                <div class="coords" style="color:#8b949e; font-size:0.75rem;">
+                    ${item.lat.toFixed(2)}, ${item.lon.toFixed(2)}
+                </div>
+                <span class="mag-badge">
+                    Mag Est: ≥ ${item.mag_pred}
+                </span>
             </div>
-        </div>
-    `;
-    const lastIcon = L.divIcon({ className: 'custom-div-icon', html: `<div style="background:rgba(248,81,73,0.3); width:40px; height:40px; border-radius:50%; border:2px solid #f85149; animation:pulse-red 2s infinite;"></div>`, iconSize: [40, 40], iconAnchor: [20, 20] });
-    const popup = `<div class="popup-dark"><div class="popup-header">🔴 Último Sismo</div><div class="popup-row"><span class="popup-icon">📍</span> ${event.place}</div><div class="popup-row"><span class="popup-icon">⚡</span> Mag: <strong>${event.magnitude.toFixed(1)}</strong></div><div class="popup-row"><span class="popup-icon">🕒</span> ${formatDatePE(event.event_time_utc).split(',')[1]}</div><div class="popup-row"><span class="popup-icon">📉</span> Prof: <strong>${event.depth_km} km</strong></div></div>`;
-    L.marker([event.lat, event.lon], { icon: lastIcon }).addTo(map).bindPopup(popup);
-});
+            <div class="prob-container">
+                <div class="prob-val" style="color:${riskColor}">
+                    ${probPct}%
+                </div>
+                <div class="prob-bar-bg">
+                    <div class="prob-bar-fill"
+                         style="width:${Math.min(probPct, 100)}%; background-color:${riskColor}"
+                         role="progressbar"
+                         aria-valuenow="${probPct}"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                    </div>
+                </div>
+            </div>
+        `;
 
-// 3. Panel
-fetch('/api/forecast/topk').then(r => r.json()).then(data => {
-    document.getElementById('generated-date').innerText = formatDatePE(data.generated_at);
-    document.getElementById('input-date').innerText = new Date(data.input_max_time).toLocaleDateString('es-PE', {timeZone: 'America/Lima'});
-    const vStart = new Date(data.topk[0].t_pred_start); const vEnd = new Date(data.topk[0].t_pred_end);
-    document.getElementById('validity-range').innerText = `${vStart.toLocaleDateString('es-PE', {day:'numeric',month:'short'})} al ${vEnd.toLocaleDateString('es-PE', {day:'numeric',month:'short'})}`;
-
-    const maxProb = data.topk[0].prob;
-    const recBox = document.getElementById('recommendation-box');
-    if (maxProb > 0.85) { recBox.style.display = 'flex'; recBox.classList.add('critical'); document.getElementById('recommendation-text').innerHTML = "<strong>NIVEL CRÍTICO:</strong> Probabilidad > 85%. Revisar planes."; }
-    else if (maxProb > 0.70) { recBox.style.display = 'flex'; document.getElementById('recommendation-text').innerHTML = "<strong>PRECAUCIÓN:</strong> Actividad anómala detectada."; }
-
-    const list = document.getElementById('topk-list'); list.innerHTML = ''; 
-    data.topk.forEach((item, index) => {
-        const probPct = (item.prob * 100).toFixed(1); const rank = index + 1; const riskColor = getColor(item.prob);
-        const div = document.createElement('div'); div.className = 'pred-item';
-        div.innerHTML = `<div class="rank-num" style="color:${riskColor}; text-shadow:0 0 10px ${riskColor}40;">#${rank}</div><div class="location-info"><div style="font-weight:bold; color:#fff; font-size:0.9rem; margin-bottom:2px;">${item.place} <a href="https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lon}" target="_blank" style="text-decoration:none;">📍</a></div><div class="coords" style="color:#8b949e; font-size:0.75rem;">${item.lat.toFixed(2)}, ${item.lon.toFixed(2)}</div><span class="mag-badge">Mag Est: ≥ ${item.mag_pred}</span></div><div class="prob-container"><div class="prob-val" style="color:${riskColor}">${probPct}%</div><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${probPct}%; background-color:${riskColor}"></div></div></div>`;
-        
-        div.onclick = (e) => { 
-            if(e.target.tagName === 'A') return; 
-            if(window.innerWidth < 768) switchTab('map');
-            map.flyTo([item.lat, item.lon], 10); 
+        const handleClick = (e) => {
+            if (e.target.tagName === 'A') return;
+            if (window.innerWidth < 768) switchTab('map');
+            map.flyTo([item.lat, item.lon], 10, { duration: 1 });
         };
+
+        div.onclick = handleClick;
+        div.onkeypress = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick(e);
+            }
+        };
+
         list.appendChild(div);
     });
+}
+
+function renderMapMarkers(zones) {
+    // Limpiar marcadores previos
+    globalState.mapMarkers.clearLayers();
+
+    if (!zones || zones.length === 0) return;
+
+    zones.forEach(zone => {
+        const color = getColor(zone.prob);
+        if (color === 'transparent') return;
+
+        const marker = L.circleMarker([zone.lat, zone.lon], {
+            radius: 7,
+            fillColor: color,
+            color: '#000',
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.9
+        });
+
+        const probPct = (zone.prob * 100).toFixed(1);
+        const safePlace = sanitizeHTML(zone.place || 'Ubicación desconocida');
+        
+        const popup = `
+            <div class="popup-dark">
+                <div class="popup-header" style="color:${color}">RIESGO: ${probPct}%</div>
+                <div class="popup-row">
+                    <span class="popup-icon">#</span> Celda: <strong>${sanitizeHTML(zone.cell_id)}</strong>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-icon">📍</span> ${safePlace}
+                </div>
+                <div style="margin-top:8px;">
+                    <a href="https://www.google.com/maps/search/?api=1&query=${zone.lat},${zone.lon}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       style="font-size:0.75rem;text-decoration:none;color:#58a6ff;border:1px solid #58a6ff;padding:2px 6px;border-radius:4px;">
+                        Ver en Mapa 🌎
+                    </a>
+                </div>
+            </div>
+        `;
+
+        marker.bindPopup(popup);
+        globalState.mapMarkers.addLayer(marker);
+    });
+}
+
+// ============================================================================
+// FILTROS Y BÚSQUEDA
+// ============================================================================
+
+function applyFilters() {
+    const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+    const riskFilter = document.getElementById('filter-risk')?.value || 'all';
+
+    let filtered = [...globalState.allZones];
+
+    // Filtro de búsqueda
+    if (searchTerm) {
+        filtered = filtered.filter(zone => {
+            const place = (zone.place || '').toLowerCase();
+            const coords = `${zone.lat.toFixed(2)},${zone.lon.toFixed(2)}`;
+            return place.includes(searchTerm) || coords.includes(searchTerm);
+        });
+    }
+
+    // Filtro de nivel de riesgo
+    if (riskFilter !== 'all') {
+        filtered = filtered.filter(zone => {
+            const prob = zone.prob;
+            switch (riskFilter) {
+                case 'critical': return prob >= 0.30;
+                case 'very-high': return prob >= 0.20 && prob < 0.30;
+                case 'high': return prob >= 0.12 && prob < 0.20;
+                case 'moderate': return prob >= 0.05 && prob < 0.12;
+                default: return true;
+            }
+        });
+    }
+
+    globalState.filteredZones = filtered;
+    renderZonesList(filtered);
+    
+    // Actualizar contador
+    const countEl = document.getElementById('zones-count');
+    if (countEl) {
+        countEl.textContent = `${filtered.length} zona${filtered.length !== 1 ? 's' : ''} detectada${filtered.length !== 1 ? 's' : ''}`;
+    }
+}
+
+function initFilters() {
+    const searchInput = document.getElementById('search-input');
+    const filterSelect = document.getElementById('filter-risk');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(applyFilters, 300));
+    }
+
+    if (filterSelect) {
+        filterSelect.addEventListener('change', applyFilters);
+    }
+}
+
+// ============================================================================
+// CARGA DE DATOS
+// ============================================================================
+
+async function loadForecastData() {
+    try {
+        const data = await fetchWithRetry('/api/forecast/latest');
+        
+        if (!data || !data.features) {
+            throw new Error('Formato de datos inválido');
+        }
+
+        // Extraer y ordenar zonas
+        const zones = data.features
+            .map(feature => ({
+                lat: feature.geometry.coordinates[1],
+                lon: feature.geometry.coordinates[0],
+                prob: feature.properties.prob,
+                cell_id: feature.properties.cell_id,
+                place: feature.properties.place || `${feature.geometry.coordinates[1].toFixed(2)}, ${feature.geometry.coordinates[0].toFixed(2)}`,
+                mag_pred: feature.properties.mag_pred || '4.0+'
+            }))
+            .filter(zone => zone.prob >= CONFIG.OPERATIVE_THRESHOLD)
+            .sort((a, b) => b.prob - a.prob);
+
+        globalState.allZones = zones;
+        globalState.filteredZones = zones;
+
+        renderMapMarkers(zones);
+        applyFilters();
+
+        return zones;
+    } catch (error) {
+        console.error('Error cargando pronóstico:', error);
+        showError('Error al cargar los datos de pronóstico. Reintentando...');
+        throw error;
+    }
+}
+
+async function loadLastEvent() {
+    try {
+        const event = await fetchWithRetry('/api/forecast/last-event');
+        
+        if (!event) {
+            const cont = document.getElementById('lq-content');
+            if (cont) cont.innerHTML = '<span class="lq-loading">Sin datos disponibles</span>';
+            return;
+        }
+
+        const cont = document.getElementById('lq-content');
+        if (cont) {
+            const safeMag = parseFloat(event.magnitude).toFixed(1);
+            const safePlace = sanitizeHTML(event.place || 'Ubicación desconocida');
+            const safeTime = formatDatePE(event.event_time_utc);
+            
+            cont.innerHTML = `
+                <div class="d-flex align-items-center justify-content-center" style="min-width: 60px;">
+                    <div class="lq-mag">${safeMag}</div>
+                    <div class="lq-unit ms-1" style="font-size:0.65rem; color:#8b949e; line-height:1.1;">MAG<br>MW</div>
+                </div>
+                
+                <div class="lq-details ms-2" style="flex-grow:1; text-align:right;">
+                    <div class="lq-row" style="justify-content:flex-end;">
+                        <span class="lq-icon">📍</span> ${safePlace}
+                    </div>
+                    <div class="lq-row" style="justify-content:flex-end;">
+                        <span class="lq-icon">🕒</span> ${safeTime}
+                    </div>
+                    <div style="margin-top:2px;">
+                        <a href="https://ultimosismo.igp.gob.pe/"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="btn-igp-mini"
+                           style="color:#58a6ff; font-size:0.65rem; text-decoration:none;">
+                            🌐 Ver en IGP ↗
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Agregar marcador al mapa
+        if (globalState.lastEventMarker) {
+            map.removeLayer(globalState.lastEventMarker);
+        }
+
+        const lastIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div style="background:rgba(248,81,73,0.3); width:40px; height:40px; border-radius:50%; border:2px solid #f85149; animation:pulse-red 2s infinite;"></div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+
+        const safePlace = sanitizeHTML(event.place || 'Ubicación desconocida');
+        const popup = `
+            <div class="popup-dark">
+                <div class="popup-header" style="color:#f85149">🔴 Último Sismo</div>
+                <div class="popup-row">
+                    <span class="popup-icon">📍</span> ${safePlace}
+                </div>
+                <div class="popup-row">
+                    <span class="popup-icon">⚡</span> Mag: <strong>${parseFloat(event.magnitude).toFixed(1)}</strong>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-icon">🕒</span> ${formatDatePE(event.event_time_utc).split(',')[1] || '--'}
+                </div>
+                <div class="popup-row">
+                    <span class="popup-icon">📉</span> Prof: <strong>${parseFloat(event.depth_km).toFixed(0)} km</strong>
+                </div>
+            </div>
+        `;
+
+        globalState.lastEventMarker = L.marker([event.lat, event.lon], { icon: lastIcon })
+            .addTo(map)
+            .bindPopup(popup);
+
+    } catch (error) {
+        console.error('Error cargando último evento:', error);
+        const cont = document.getElementById('lq-content');
+        if (cont) cont.innerHTML = '<span class="lq-loading" style="color:#f85149">Error al cargar</span>';
+    }
+}
+
+async function loadMetadata() {
+    try {
+        const data = await fetchWithRetry('/api/forecast/topk');
+        
+        if (!data || !data.topk || !data.topk.length) {
+            throw new Error('No hay datos de metadatos disponibles');
+        }
+
+        // Metadatos de corrida
+        const genDate = document.getElementById('generated-date');
+        const inputDate = document.getElementById('input-date');
+        const validityRange = document.getElementById('validity-range');
+        const modelBadge = document.getElementById('model-badge');
+
+        if (genDate) genDate.textContent = formatDatePE(data.generated_at);
+        if (inputDate) {
+            inputDate.textContent = new Date(data.input_max_time).toLocaleDateString('es-PE', {
+                timeZone: 'America/Lima'
+            });
+        }
+
+        if (validityRange && data.topk[0]) {
+            const vStart = new Date(data.topk[0].t_pred_start);
+            const vEnd = new Date(data.topk[0].t_pred_end);
+            validityRange.textContent = 
+                `${formatDateShort(vStart)} al ${formatDateShort(vEnd)}`;
+        }
+
+        // Actualizar badge del modelo (si viene en la API, sino usar el del HTML)
+        if (modelBadge && data.model_version) {
+            modelBadge.textContent = data.model_version;
+        } else if (modelBadge && modelBadge.textContent === 'Cargando...') {
+            modelBadge.textContent = 'LSTM v3.3.1';
+        }
+
+        // Recomendación ciudadana
+        const maxProb = globalState.allZones.length > 0 
+            ? Math.max(...globalState.allZones.map(z => z.prob))
+            : 0;
+            
+        updateRecommendation(maxProb);
+
+        // Actualizar panel científico - AHORA USA globalState.allZones
+        updateScientificPanel();
+
+    } catch (error) {
+        console.error('Error cargando metadatos:', error);
+        showError('Error al cargar metadatos del sistema');
+    }
+}
+
+function updateRecommendation(maxProb) {
+    const recBox = document.getElementById('recommendation-box');
+    const recText = document.getElementById('recommendation-text');
+    
+    if (!recBox || !recText) return;
+
+    if (maxProb >= 0.25) {
+        recBox.style.display = 'flex';
+        recBox.classList.add('critical');
+        recText.innerHTML =
+            "<strong>NIVEL CRÍTICO LOCAL:</strong> una o más zonas con score ≥ 25%. " +
+            "Revise planes familiares y siga solo fuentes oficiales (INDECI / IGP).";
+    } else if (maxProb >= CONFIG.OPERATIVE_THRESHOLD) {
+        recBox.style.display = 'flex';
+        recBox.classList.remove('critical');
+        recText.innerHTML =
+            "<strong>PRECAUCIÓN:</strong> el modelo detecta actividad inusual. " +
+            "Vale la pena revisar mochilas de emergencia y rutas de evacuación.";
+    } else {
+        recBox.style.display = 'none';
+        recBox.classList.remove('critical');
+    }
+}
+
+function updateScientificPanel() {
+    if (!globalState.allZones.length) {
+        console.warn('No hay zonas cargadas para actualizar panel científico');
+        return;
+    }
+
+    const zones = globalState.allZones;
+    const probs = zones.map(z => z.prob);
+    const lats = zones.map(z => z.lat);
+    const lons = zones.map(z => z.lon);
+
+    const maxProb = Math.max(...probs);
+    const avgProb = probs.reduce((a, b) => a + b, 0) / probs.length;
+    const countAbove = probs.filter(p => p >= CONFIG.OPERATIVE_THRESHOLD).length;
+    const pctAbove = (countAbove / probs.length) * 100;
+
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+
+    const modelBadge = document.getElementById('model-badge');
+    const modelName = modelBadge ? modelBadge.textContent : 'LSTM v3.3.1';
+    setText('sci-model', `${modelName} – Bi-LSTM 30 días`);
+    setText('sci-total', `${zones.length} celdas`);
+    setText('sci-visible', `${zones.length} celdas`);
+    setText('sci-maxprob', `${(maxProb * 100).toFixed(1)}%`);
+    setText('sci-avgprob', `${(avgProb * 100).toFixed(1)}%`);
+    setText('sci-threshold', `${(CONFIG.OPERATIVE_THRESHOLD * 100).toFixed(1)}%`);
+    setText('sci-above', `${countAbove} zonas (${pctAbove.toFixed(0)}%)`);
+
+    const minLat = Math.min(...lats).toFixed(1);
+    const maxLat = Math.max(...lats).toFixed(1);
+    const minLon = Math.min(...lons).toFixed(1);
+    const maxLon = Math.max(...lons).toFixed(1);
+
+    setText('sci-lat-range', `${minLat}° a ${maxLat}°`);
+    setText('sci-lon-range', `${minLon}° a ${maxLon}°`);
+}
+
+// ============================================================================
+// LEYENDA DEL MAPA
+// ============================================================================
+
+function initLegend() {
+    const legend = L.control({ position: 'bottomleft' });
+
+    legend.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info legend');
+        const grades = [
+            { label: 'Crítico (≥30%)', color: CONFIG.RISK_LEVELS.CRITICAL.color },
+            { label: 'Muy alto (20–30%)', color: CONFIG.RISK_LEVELS.VERY_HIGH.color },
+            { label: 'Alto operativo (12–20%)', color: CONFIG.RISK_LEVELS.HIGH.color },
+            { label: 'Leve (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
+        ];
+
+        let html = '<h6>Nivel de riesgo</h6>';
+        grades.forEach(i => {
+            html += `
+                <div class="legend-item">
+                    <i class="legend-icon" style="background:${i.color}" aria-hidden="true"></i>
+                    <span>${i.label}</span>
+                </div>
+            `;
+        });
+        html += `
+            <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
+                Score relativo de riesgo de sismo ≥ M4.0 (ventana 7 días)
+            </div>
+        `;
+        div.innerHTML = html;
+        return div;
+    };
+
+    legend.addTo(map);
+}
+
+// ============================================================================
+// FUNCIÓN DE REFRESCO
+// ============================================================================
+
+async function refreshData() {
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.style.animation = 'none';
+        setTimeout(() => {
+            refreshBtn.style.animation = '';
+        }, 10);
+    }
+
+    showLoading(true);
+    
+    try {
+        // Cargar EN ORDEN: primero forecast (llena globalState.allZones), luego metadata
+        await loadForecastData();
+        await loadLastEvent();
+        await loadMetadata();
+        
+        showLoading(false);
+    } catch (error) {
+        showLoading(false);
+        showError('Error al actualizar los datos. Por favor, intente nuevamente.', 10000);
+    }
+}
+
+// ============================================================================
+// RESPONSIVE Y REDIMENSIONAMIENTO
+// ============================================================================
+
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        map.invalidateSize();
+    }, 250);
 });
 
-// 4. Leyenda
-const legend = L.control({ position: 'bottomleft' });
-legend.onAdd = function (map) {
-    const div = L.DomUtil.create('div', 'info legend');
-    const grades = [{ label: 'Crítico (>95%)', color: '#ff0000' }, { label: 'Muy Alto (>85%)', color: '#ff4d4d' }, { label: 'Alto (>70%)', color: '#ff9f1c' }, { label: 'Moderado (>55%)', color: '#ffeb3b' }];
-    let html = '<h6>Nivel de Riesgo</h6>';
-    grades.forEach(i => { html += `<div class="legend-item"><i class="legend-icon" style="background:${i.color}"></i><span>${i.label}</span></div>`; });
-    html += '<div style="margin-top:8px; font-size:0.65rem; color:#8b949e">Prob. de Sismo ≥ M4.0</div>';
-    div.innerHTML = html; return div;
-};
-legend.addTo(map);
+// ============================================================================
+// INICIALIZACIÓN
+// ============================================================================
 
-if (window.innerWidth < 768) { switchTab('list'); }
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        showLoading(true);
+        
+        // Inicializar UI
+        initModeTabs();
+        initFilters();
+        initLegend();
+        
+        // Cargar datos EN ORDEN (primero forecast, luego metadata que depende de él)
+        await loadForecastData(); // PRIMERO: carga globalState.allZones
+        await loadLastEvent();     // SEGUNDO: independiente
+        await loadMetadata();      // TERCERO: usa globalState.allZones
+        
+        showLoading(false);
+        
+        // Estado inicial en móvil
+        if (window.innerWidth < 768) {
+            switchTab('list');
+        }
+        
+    } catch (error) {
+        console.error('Error en inicialización:', error);
+        showLoading(false);
+        showError('Error al inicializar la aplicación. Recargue la página.', 0);
+    }
+});
+
+// ============================================================================
+// EXPORTAR FUNCIONES GLOBALES PARA USO EN HTML
+// ============================================================================
+
+window.switchTab = switchTab;
+window.refreshData = refreshData;
+window.closeErrorToast = closeErrorToast;
