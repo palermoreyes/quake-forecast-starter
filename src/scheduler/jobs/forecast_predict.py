@@ -26,14 +26,13 @@ class Config:
 
     models_dir: str = os.getenv("MODELS_DIR", "/app/artifacts/models")
 
-    # V3: top-K ajustado para balancear cobertura/precisión
+    # Top-K de celdas con mayor probabilidad para dashboard
     topk_k: int = int(os.getenv("PRED_TOPK_K", "25"))
 
-    # Mínimo de probabilidad para considerar una celda como candidata a alerta
-    # Bajamos a 0.10 porque el modelo V3 es muy conservador
+    # Umbral mínimo para considerar una celda candidata a alerta
     min_prob_alert: float = float(os.getenv("PRED_MIN_PROB_ALERT", "0.10"))
 
-    # Historial a mirar para construir la entrada (>= window_days)
+    # Días hacia atrás para construir el tensor nacional
     lookback_days: int = int(os.getenv("PRED_LOOKBACK_DAYS", "90"))
 
 
@@ -51,10 +50,9 @@ def get_conn(cfg: Config):
 #  UTILIDADES GEOGRÁFICAS
 # ==========================
 
-
 def haversine_km(lat1, lon1, lat2, lon2):
-    """Calcula distancia en km entre dos puntos (Fórmula Haversine)."""
-    R = 6371.0  # Radio Tierra
+    """Distancia en km entre dos puntos (Fórmula de Haversine)."""
+    R = 6371.0
     dLat = math.radians(lat2 - lat1)
     dLon = math.radians(lon2 - lon1)
     a = (
@@ -68,7 +66,7 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def get_cardinal_direction(lat1, lon1, lat2, lon2):
-    """Dirección (N, NE, E...) del sismo respecto a la ciudad."""
+    """Dirección cardinal (N, NE, E...) del punto (lat1,lon1) respecto a (lat2,lon2)."""
     dLon = math.radians(lon1 - lon2)
     lat1 = math.radians(lat1)
     lat2 = math.radians(lat2)
@@ -85,7 +83,10 @@ def get_cardinal_direction(lat1, lon1, lat2, lon2):
 
 
 def format_location(event_lat, event_lon, geo_info):
-    """Texto tipo: 'A 15 km al SO de Mala, Lima'."""
+    """
+    Devuelve un texto tipo: 'A 15 km al SO de Mala, Lima'
+    o 'En Mala, Lima' si la distancia < 5 km.
+    """
     city_name = geo_info.get("name", "Zona")
     region = geo_info.get("admin1", "")
 
@@ -95,16 +96,15 @@ def format_location(event_lat, event_lon, geo_info):
     dist = haversine_km(event_lat, event_lon, city_lat, city_lon)
 
     if dist < 5:
-        return f"En {city_name}, {region}"
+        return f"En {city_name}, {region}".strip(", ")
 
     direction = get_cardinal_direction(event_lat, event_lon, city_lat, city_lon)
-    return f"A {int(dist)} km al {direction} de {city_name}, {region}"
+    return f"A {int(dist)} km al {direction} de {city_name}, {region}".strip(", ")
 
 
 # ==========================
 #  LÓGICA DE MODELO / CARGA
 # ==========================
-
 
 def get_active_model(cfg: Config):
     """
@@ -137,7 +137,7 @@ def get_active_model(cfg: Config):
 
     path_rel = params.get("model_path")
     if not path_rel:
-        # Fallback: archivo más reciente en models_dir
+        # Fallback: último .keras en la carpeta
         files = sorted(
             [f for f in os.listdir(cfg.models_dir) if f.endswith(".keras")]
         )
@@ -190,18 +190,15 @@ def build_national_tensor(
         .astype(np.float32)
     )
 
-    # FECHA AUTOMÁTICA (PRODUCCIÓN)
+    # Producción: último día disponible (ayer)
     end_date = pd.Timestamp.now().date() - pd.Timedelta(days=1)
-    
-    # --- FECHA MANUAL (BACKTESTING - Descomentar para pruebas pasadas) ---
-    #end_date = pd.Timestamp("2025-11-10").date() 
 
     full_idx = pd.date_range(
         end=end_date, periods=cfg.lookback_days, freq="D"
     )
     pivot = pivot.reindex(full_idx, fill_value=0).astype(np.float32)
 
-    # Reordenar columnas para que coincidan exactamente con entrenamiento
+    # Reordenar columnas para que coincidan con entrenamiento
     pivot = pivot.reindex(columns=cell_ids_train, fill_value=0).astype(np.float32)
 
     if pivot.shape[0] < window_days:
@@ -228,7 +225,6 @@ def build_national_tensor(
 #  MAIN DE PREDICCIÓN
 # ==========================
 
-
 def main():
     cfg = Config()
 
@@ -244,7 +240,7 @@ def main():
         print(f"[ERROR] {e}")
         return
 
-    # Extraer parámetros guardados en entrenamiento
+    # Parámetros guardados en entrenamiento
     cell_ids_train = params.get("cell_ids")
     norm_means = params.get("norm_means")
     norm_stds = params.get("norm_stds")
@@ -278,6 +274,7 @@ def main():
     model = tf.keras.models.load_model(model_path)
     probs = model.predict(X, batch_size=2048, verbose=1).flatten()
 
+    # Horizonte (asumimos un único horizonte para ahora)
     last_input_ts = pd.to_datetime(last_input_date).to_pydatetime()
     horizon_days = int(horizons[0])
 
@@ -301,8 +298,11 @@ def main():
 
     topk = df_filtered.nlargest(cfg.topk_k, "prob")
 
+    # ========================
+    #  PERSISTENCIA EN BD
+    # ========================
     with get_conn(cfg) as conn:
-        # Geometría de las celdas top-K
+        # 1. Geometría de las celdas top-K
         ids_tuple = tuple(int(c) for c in topk["cell_id"].tolist())
         q_geo = (
             "SELECT cell_id, ST_Y(centroid) AS lat, ST_X(centroid) AS lon "
@@ -310,17 +310,17 @@ def main():
         )
         df_geo = pd.read_sql_query(q_geo, conn, params=(ids_tuple,))
 
-        # Enriquecimiento geográfico (reverse geocoding)
+        # Reverse geocoding en el mismo orden
         coords = list(zip(df_geo["lat"], df_geo["lon"]))
         results = rg.search(coords)
 
         place_map = {}
-        for i, row in df_geo.iterrows():
-            ref_text = format_location(row["lat"], row["lon"], results[i])
-            place_map[int(row["cell_id"])] = ref_text
+        for idx, row in enumerate(df_geo.itertuples(index=False)):
+            ref_text = format_location(row.lat, row.lon, results[idx])
+            place_map[int(row.cell_id)] = ref_text
 
         with conn.cursor() as cur:
-            # Registrar corrida de predicción
+            # 2. Registrar corrida de predicción
             cur.execute(
                 """
                 INSERT INTO prediction_run
@@ -338,14 +338,14 @@ def main():
             )
             run_id = cur.fetchone()[0]
 
-            # Guardar todas las probabilidades por celda
+            # 3. Guardar TODAS las probabilidades por celda (grid completo)
             data_probs = [
                 (
                     run_id,
                     int(r.cell_id),
                     horizon_days,
                     float(r.prob),
-                    float(r.prob),  # density ~ prob por ahora
+                    float(r.prob),   # density ~ prob por ahora
                     float(r.rank_pct),
                 )
                 for r in df_res.itertuples()
@@ -361,31 +361,33 @@ def main():
                 data_probs,
             )
 
-            # Guardar solo top-K para el dashboard
-            for i, row in enumerate(topk.itertuples(), 1):
-                place_txt = place_map.get(int(row.cell_id), "Zona remota")
+            # 4. Guardar SOLO top-K (incluyendo cell_id y place)
+            for rank_idx, row in enumerate(topk.itertuples(), 1):
+                cell_id = int(row.cell_id)
+                place_txt = place_map.get(cell_id, "Zona remota")
                 cur.execute(
                     """
                     INSERT INTO prediction_topk
                     (run_id, horizon_days, rank, 
                      t_pred_start, t_pred_end,
-                     lat, lon, mag_pred, prob, place)
+                     lat, lon, mag_pred, prob, place, cell_id)
                     SELECT %s, %s, %s, %s, %s,
                            ST_Y(centroid), ST_X(centroid),
-                           %s, %s, %s
+                           %s, %s, %s, %s
                     FROM prediction_cells
                     WHERE cell_id = %s
                     """,
                     (
                         run_id,
                         horizon_days,
-                        i,
+                        rank_idx,
                         pred_start,
                         pred_end,
-                        mag_min + 0.5,
+                        mag_min + 0.5,      # magnitud estimada (ej: mag_min + 0.5)
                         float(row.prob),
                         place_txt,
-                        int(row.cell_id),
+                        cell_id,             # valor para columna cell_id
+                        cell_id,             # valor para WHERE cell_id = ...
                     ),
                 )
 

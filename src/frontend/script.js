@@ -11,6 +11,7 @@ const CONFIG = {
         zoom: window.innerWidth < 768 ? 5.5 : 6
     },
     OPERATIVE_THRESHOLD: 0.12,
+    MAX_ZONES: 25,
     RISK_LEVELS: {
         CRITICAL: { min: 0.30, color: '#ff0000', label: 'Crítico' },
         VERY_HIGH: { min: 0.20, color: '#ff4d4d', label: 'Muy alto' },
@@ -31,7 +32,8 @@ let globalState = {
     filteredZones: [],
     mapMarkers: L.layerGroup(),
     lastEventMarker: null,
-    isLoading: false
+    isLoading: false,
+    footerExpanded: false
 };
 
 // ============================================================================
@@ -46,24 +48,34 @@ function sanitizeHTML(text) {
 
 function formatDatePE(isoString) {
     if (!isoString) return '--';
-    return new Date(isoString).toLocaleString('es-PE', {
-        timeZone: 'America/Lima',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-    });
+    try {
+        return new Date(isoString).toLocaleString('es-PE', {
+            timeZone: 'America/Lima',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch (error) {
+        console.error('Error formateando fecha:', error);
+        return '--';
+    }
 }
 
 function formatDateShort(isoString) {
     if (!isoString) return '--';
-    return new Date(isoString).toLocaleDateString('es-PE', {
-        timeZone: 'America/Lima',
-        day: 'numeric',
-        month: 'short'
-    });
+    try {
+        return new Date(isoString).toLocaleDateString('es-PE', {
+            timeZone: 'America/Lima',
+            day: 'numeric',
+            month: 'short'
+        });
+    } catch (error) {
+        console.error('Error formateando fecha corta:', error);
+        return '--';
+    }
 }
 
 function getColor(prob) {
@@ -87,6 +99,8 @@ function showError(message, duration = 5000) {
     if (toast && messageEl) {
         messageEl.textContent = message;
         toast.style.display = 'flex';
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
         
         if (duration > 0) {
             setTimeout(() => {
@@ -94,6 +108,23 @@ function showError(message, duration = 5000) {
             }, duration);
         }
     }
+}
+
+function showSuccess(message, duration = 3000) {
+    const toast = document.createElement('div');
+    toast.className = 'success-toast';
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'polite');
+    toast.innerHTML = `
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <div>${sanitizeHTML(message)}</div>
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
 }
 
 function closeErrorToast() {
@@ -105,6 +136,7 @@ function showLoading(show = true) {
     const overlay = document.getElementById('loading-overlay');
     if (overlay) {
         overlay.style.display = show ? 'block' : 'none';
+        overlay.setAttribute('aria-busy', show.toString());
     }
     globalState.isLoading = show;
 }
@@ -129,8 +161,33 @@ async function fetchWithRetry(url, options = {}, retries = CONFIG.RETRY_ATTEMPTS
             return await response.json();
         } catch (error) {
             if (i === retries - 1) throw error;
+            console.warn(`Reintento ${i + 1}/${retries} para ${url}`);
             await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
         }
+    }
+}
+
+// ============================================================================
+// FOOTER COLAPSABLE
+// ============================================================================
+
+function toggleFooterInfo() {
+    const content = document.getElementById('info-content');
+    const chevron = document.getElementById('chevron-icon');
+    const btn = document.getElementById('info-toggle-btn');
+    
+    if (!content || !chevron || !btn) return;
+    
+    globalState.footerExpanded = !globalState.footerExpanded;
+    
+    if (globalState.footerExpanded) {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        chevron.textContent = '▲';
+        btn.setAttribute('aria-expanded', 'true');
+    } else {
+        content.style.maxHeight = '0';
+        chevron.textContent = '▼';
+        btn.setAttribute('aria-expanded', 'false');
     }
 }
 
@@ -152,10 +209,8 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19
 }).addTo(map);
 
-// Agregar capa de marcadores al mapa
 globalState.mapMarkers.addTo(map);
 
-// Botón "Home"
 const HomeControl = L.Control.extend({
     options: { position: 'topleft' },
     onAdd: function () {
@@ -199,12 +254,16 @@ function switchTab(tab) {
         listCont?.classList.remove('active');
         btnMap?.classList.add('active');
         btnList?.classList.remove('active');
+        btnMap?.setAttribute('aria-current', 'true');
+        btnList?.setAttribute('aria-current', 'false');
         setTimeout(() => map.invalidateSize(), 100);
     } else {
         mapCont?.classList.remove('active');
         listCont?.classList.add('active');
         btnList?.classList.add('active');
         btnMap?.classList.remove('active');
+        btnList?.setAttribute('aria-current', 'true');
+        btnMap?.setAttribute('aria-current', 'false');
     }
 }
 
@@ -233,6 +292,14 @@ function initModeTabs() {
                 scientificPanel.classList.add('hidden');
             }
         });
+        
+        // Soporte de teclado
+        tab.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                tab.click();
+            }
+        });
     });
 }
 
@@ -245,10 +312,19 @@ function renderZonesList(zones) {
     if (!list) return;
 
     if (!zones || zones.length === 0) {
+        const searchTerm = document.getElementById('search-input')?.value || '';
+        const hasFilters = searchTerm || (document.getElementById('filter-risk')?.value !== 'all');
+        
         list.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">🔍</div>
-                <p>No se encontraron zonas con los filtros actuales</p>
+            <div class="empty-state" role="status">
+                <div class="empty-state-icon" aria-hidden="true">🔍</div>
+                <p style="font-weight: 600; margin-bottom: 8px;">
+                    ${hasFilters ? 'No hay zonas que coincidan' : 'No hay datos disponibles'}
+                </p>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">
+                    ${hasFilters ? 'Intenta ajustar los filtros de búsqueda' : 'Cargando información...'}
+                </p>
+                ${hasFilters ? '<button onclick="clearFilters()" class="btn btn-sm btn-outline-primary mt-2">Limpiar filtros</button>' : ''}
             </div>
         `;
         return;
@@ -267,26 +343,27 @@ function renderZonesList(zones) {
         div.className = 'pred-item';
         div.setAttribute('role', 'button');
         div.setAttribute('tabindex', '0');
-        div.setAttribute('aria-label', `Zona ${rank}: ${safePlace}, Riesgo ${probPct}%`);
+        div.setAttribute('aria-label', `Zona ${rank}: ${safePlace}, Nivel de riesgo ${riskLevel}, ${probPct}%`);
         
         div.innerHTML = `
             <div class="rank-num"
-                 style="color:${riskColor}; text-shadow:0 0 10px ${riskColor}40;">
+                 style="color:${riskColor}; text-shadow:0 0 10px ${riskColor}40;"
+                 aria-hidden="true">
                 #${rank}
             </div>
             <div class="location-info">
-                <div style="font-weight:bold; color:#fff; font-size:0.9rem; margin-bottom:2px;">
-                    ${safePlace}
+                <div class="location-name" style="font-weight:bold; color:#fff; font-size:0.9rem; margin-bottom:4px; display: flex; align-items: center; gap: 4px;">
+                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safePlace}</span>
                     <a href="https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lon}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       style="text-decoration:none;"
+                       style="text-decoration:none; flex-shrink: 0;"
                        aria-label="Ver en Google Maps">
                         📍
                     </a>
                 </div>
-                <div class="coords" style="color:#8b949e; font-size:0.75rem;">
-                    ${item.lat.toFixed(2)}, ${item.lon.toFixed(2)}
+                <div class="coords" style="color:#8b949e; font-size:0.75rem; margin-bottom: 4px; font-family: 'Courier New', monospace;">
+                    ${item.lat.toFixed(2)}°, ${item.lon.toFixed(2)}°
                 </div>
                 <span class="mag-badge">
                     Mag Est: ≥ ${item.mag_pred}
@@ -302,7 +379,8 @@ function renderZonesList(zones) {
                          role="progressbar"
                          aria-valuenow="${probPct}"
                          aria-valuemin="0"
-                         aria-valuemax="100">
+                         aria-valuemax="100"
+                         aria-label="Nivel de riesgo ${probPct} por ciento">
                     </div>
                 </div>
             </div>
@@ -327,7 +405,6 @@ function renderZonesList(zones) {
 }
 
 function renderMapMarkers(zones) {
-    // Limpiar marcadores previos
     globalState.mapMarkers.clearLayers();
 
     if (!zones || zones.length === 0) return;
@@ -352,10 +429,10 @@ function renderMapMarkers(zones) {
             <div class="popup-dark">
                 <div class="popup-header" style="color:${color}">RIESGO: ${probPct}%</div>
                 <div class="popup-row">
-                    <span class="popup-icon">#</span> Celda: <strong>${sanitizeHTML(zone.cell_id)}</strong>
+                    <span class="popup-icon" aria-hidden="true">#</span> Celda: <strong>${sanitizeHTML(zone.cell_id)}</strong>
                 </div>
                 <div class="popup-row">
-                    <span class="popup-icon">📍</span> ${safePlace}
+                    <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
                 </div>
                 <div style="margin-top:8px;">
                     <a href="https://www.google.com/maps/search/?api=1&query=${zone.lat},${zone.lon}"
@@ -383,7 +460,6 @@ function applyFilters() {
 
     let filtered = [...globalState.allZones];
 
-    // Filtro de búsqueda
     if (searchTerm) {
         filtered = filtered.filter(zone => {
             const place = (zone.place || '').toLowerCase();
@@ -392,7 +468,6 @@ function applyFilters() {
         });
     }
 
-    // Filtro de nivel de riesgo
     if (riskFilter !== 'all') {
         filtered = filtered.filter(zone => {
             const prob = zone.prob;
@@ -409,11 +484,23 @@ function applyFilters() {
     globalState.filteredZones = filtered;
     renderZonesList(filtered);
     
-    // Actualizar contador
     const countEl = document.getElementById('zones-count');
     if (countEl) {
-        countEl.textContent = `${filtered.length} zona${filtered.length !== 1 ? 's' : ''} detectada${filtered.length !== 1 ? 's' : ''}`;
+        const count = filtered.length;
+        countEl.textContent = `${count} zona${count !== 1 ? 's' : ''} detectada${count !== 1 ? 's' : ''}`;
+        countEl.setAttribute('aria-live', 'polite');
     }
+}
+
+function clearFilters() {
+    const searchInput = document.getElementById('search-input');
+    const filterSelect = document.getElementById('filter-risk');
+    
+    if (searchInput) searchInput.value = '';
+    if (filterSelect) filterSelect.value = 'all';
+    
+    applyFilters();
+    showSuccess('Filtros limpiados');
 }
 
 function initFilters() {
@@ -441,26 +528,40 @@ async function loadForecastData() {
             throw new Error('Formato de datos inválido');
         }
 
-        // Extraer y ordenar zonas
         const zones = data.features
-            .map(feature => ({
-                lat: feature.geometry.coordinates[1],
-                lon: feature.geometry.coordinates[0],
-                prob: feature.properties.prob,
-                cell_id: feature.properties.cell_id,
-                place: feature.properties.place || `${feature.geometry.coordinates[1].toFixed(2)}, ${feature.geometry.coordinates[0].toFixed(2)}`,
-                mag_pred: feature.properties.mag_pred || '4.0+'
-            }))
+            .map(feature => {
+                const lat = feature.geometry.coordinates[1];
+                const lon = feature.geometry.coordinates[0];
+
+                const placeRef =
+                    feature.properties.place_ref
+                    || feature.properties.place
+                    || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+
+                return {
+                    lat,
+                    lon,
+                    prob: feature.properties.prob,
+                    cell_id: feature.properties.cell_id,
+                    place: placeRef,
+                    mag_pred: feature.properties.mag_pred || '4.0+'
+                };
+            })
             .filter(zone => zone.prob >= CONFIG.OPERATIVE_THRESHOLD)
             .sort((a, b) => b.prob - a.prob);
 
-        globalState.allZones = zones;
-        globalState.filteredZones = zones;
+        // 👇 nos quedamos SOLO con las top-K zonas
+        const topZones = zones.slice(0, CONFIG.MAX_ZONES);
 
-        renderMapMarkers(zones);
+        globalState.allZones = topZones;
+        globalState.filteredZones = topZones;
+
+        // Mapa y lista trabajan solo con esas 25
+        renderMapMarkers(topZones);
         applyFilters();
 
-        return zones;
+return topZones;
+
     } catch (error) {
         console.error('Error cargando pronóstico:', error);
         showError('Error al cargar los datos de pronóstico. Reintentando...');
@@ -492,10 +593,10 @@ async function loadLastEvent() {
                 
                 <div class="lq-details ms-2" style="flex-grow:1; text-align:right;">
                     <div class="lq-row" style="justify-content:flex-end;">
-                        <span class="lq-icon">📍</span> ${safePlace}
+                        <span class="lq-icon" aria-hidden="true">📍</span> ${safePlace}
                     </div>
                     <div class="lq-row" style="justify-content:flex-end;">
-                        <span class="lq-icon">🕒</span> ${safeTime}
+                        <span class="lq-icon" aria-hidden="true">🕒</span> ${safeTime}
                     </div>
                     <div style="margin-top:2px;">
                         <a href="https://ultimosismo.igp.gob.pe/"
@@ -510,7 +611,6 @@ async function loadLastEvent() {
             `;
         }
 
-        // Agregar marcador al mapa
         if (globalState.lastEventMarker) {
             map.removeLayer(globalState.lastEventMarker);
         }
@@ -527,16 +627,16 @@ async function loadLastEvent() {
             <div class="popup-dark">
                 <div class="popup-header" style="color:#f85149">🔴 Último Sismo</div>
                 <div class="popup-row">
-                    <span class="popup-icon">📍</span> ${safePlace}
+                    <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
                 </div>
                 <div class="popup-row">
-                    <span class="popup-icon">⚡</span> Mag: <strong>${parseFloat(event.magnitude).toFixed(1)}</strong>
+                    <span class="popup-icon" aria-hidden="true">⚡</span> Mag: <strong>${parseFloat(event.magnitude).toFixed(1)}</strong>
                 </div>
                 <div class="popup-row">
-                    <span class="popup-icon">🕒</span> ${formatDatePE(event.event_time_utc).split(',')[1] || '--'}
+                    <span class="popup-icon" aria-hidden="true">🕒</span> ${formatDatePE(event.event_time_utc).split(',')[1] || '--'}
                 </div>
                 <div class="popup-row">
-                    <span class="popup-icon">📉</span> Prof: <strong>${parseFloat(event.depth_km).toFixed(0)} km</strong>
+                    <span class="popup-icon" aria-hidden="true">📉</span> Prof: <strong>${parseFloat(event.depth_km).toFixed(0)} km</strong>
                 </div>
             </div>
         `;
@@ -560,7 +660,6 @@ async function loadMetadata() {
             throw new Error('No hay datos de metadatos disponibles');
         }
 
-        // Metadatos de corrida
         const genDate = document.getElementById('generated-date');
         const inputDate = document.getElementById('input-date');
         const validityRange = document.getElementById('validity-range');
@@ -580,21 +679,17 @@ async function loadMetadata() {
                 `${formatDateShort(vStart)} al ${formatDateShort(vEnd)}`;
         }
 
-        // Actualizar badge del modelo (si viene en la API, sino usar el del HTML)
         if (modelBadge && data.model_version) {
             modelBadge.textContent = data.model_version;
         } else if (modelBadge && modelBadge.textContent === 'Cargando...') {
             modelBadge.textContent = 'LSTM v3.3.1';
         }
 
-        // Recomendación ciudadana
         const maxProb = globalState.allZones.length > 0 
             ? Math.max(...globalState.allZones.map(z => z.prob))
             : 0;
             
         updateRecommendation(maxProb);
-
-        // Actualizar panel científico - AHORA USA globalState.allZones
         updateScientificPanel();
 
     } catch (error) {
@@ -613,14 +708,14 @@ function updateRecommendation(maxProb) {
         recBox.style.display = 'flex';
         recBox.classList.add('critical');
         recText.innerHTML =
-            "<strong>NIVEL CRÍTICO LOCAL:</strong> una o más zonas con score ≥ 25%. " +
-            "Revise planes familiares y siga solo fuentes oficiales (INDECI / IGP).";
+            "<strong>NIVEL CRÍTICO LOCAL:</strong> Una o más zonas presentan valores de riesgo ≥ 25%. " +
+            "Se recomienda revisar planes de emergencia y fuentes oficiales (INDECI / IGP).";
     } else if (maxProb >= CONFIG.OPERATIVE_THRESHOLD) {
         recBox.style.display = 'flex';
         recBox.classList.remove('critical');
         recText.innerHTML =
-            "<strong>PRECAUCIÓN:</strong> el modelo detecta actividad inusual. " +
-            "Vale la pena revisar mochilas de emergencia y rutas de evacuación.";
+            "<strong>PRECAUCIÓN:</strong> El modelo detecta actividad inusual en algunas zonas. " +
+            "Es recomendable verificar sus mochilas de emergencia y rutas de evacuación.";
     } else {
         recBox.style.display = 'none';
         recBox.classList.remove('critical');
@@ -628,12 +723,24 @@ function updateRecommendation(maxProb) {
 }
 
 function updateScientificPanel() {
-    if (!globalState.allZones.length) {
-        console.warn('No hay zonas cargadas para actualizar panel científico');
+    const zones = globalState.allZones;
+    
+    if (!zones || zones.length === 0) {
+        const setText = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        
+        setText('sci-total', 'Sin datos');
+        setText('sci-visible', 'Sin datos');
+        setText('sci-maxprob', '--');
+        setText('sci-avgprob', '--');
+        setText('sci-above', '0 zonas');
+        setText('sci-lat-range', '--');
+        setText('sci-lon-range', '--');
         return;
     }
 
-    const zones = globalState.allZones;
     const probs = zones.map(z => z.prob);
     const lats = zones.map(z => z.lat);
     const lons = zones.map(z => z.lon);
@@ -676,6 +783,9 @@ function initLegend() {
 
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'info legend');
+        div.setAttribute('role', 'region');
+        div.setAttribute('aria-label', 'Leyenda del mapa de riesgo sísmico');
+        
         const grades = [
             { label: 'Crítico (≥30%)', color: CONFIG.RISK_LEVELS.CRITICAL.color },
             { label: 'Muy alto (20–30%)', color: CONFIG.RISK_LEVELS.VERY_HIGH.color },
@@ -711,24 +821,29 @@ function initLegend() {
 async function refreshData() {
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
-        refreshBtn.style.animation = 'none';
-        setTimeout(() => {
-            refreshBtn.style.animation = '';
-        }, 10);
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('spinning');
+        refreshBtn.setAttribute('aria-busy', 'true');
     }
 
     showLoading(true);
-    
+
     try {
-        // Cargar EN ORDEN: primero forecast (llena globalState.allZones), luego metadata
         await loadForecastData();
         await loadLastEvent();
         await loadMetadata();
         
         showLoading(false);
+        showSuccess('✓ Datos actualizados correctamente');
     } catch (error) {
         showLoading(false);
         showError('Error al actualizar los datos. Por favor, intente nuevamente.', 10000);
+    } finally {
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.classList.remove('spinning');
+            refreshBtn.setAttribute('aria-busy', 'false');
+        }
     }
 }
 
@@ -741,7 +856,7 @@ window.addEventListener('resize', () => {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
         map.invalidateSize();
-    }, 250);
+    }, 150);
 });
 
 // ============================================================================
@@ -750,6 +865,25 @@ window.addEventListener('resize', () => {
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        // Mostrar modal de bienvenida solo la primera vez
+        const welcomeSeen = localStorage.getItem('quakeForecastWelcomeSeen');
+        
+        if (!welcomeSeen) {
+            const modalEl = document.getElementById('welcomeModal');
+            if (modalEl) {
+                const welcomeModal = new bootstrap.Modal(modalEl, {
+                    backdrop: 'static',
+                    keyboard: true
+                });
+                welcomeModal.show();
+                
+                // Guardar en localStorage cuando se cierre
+                modalEl.addEventListener('hidden.bs.modal', function() {
+                    localStorage.setItem('quakeForecastWelcomeSeen', 'true');
+                });
+            }
+        }
+        
         showLoading(true);
         
         // Inicializar UI
@@ -757,14 +891,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         initFilters();
         initLegend();
         
-        // Cargar datos EN ORDEN (primero forecast, luego metadata que depende de él)
-        await loadForecastData(); // PRIMERO: carga globalState.allZones
-        await loadLastEvent();     // SEGUNDO: independiente
-        await loadMetadata();      // TERCERO: usa globalState.allZones
+        // Cargar datos EN ORDEN
+        await loadForecastData();
+        await loadLastEvent();
+        await loadMetadata();
         
         showLoading(false);
         
-        // Estado inicial en móvil
+        // Estado inicial en móvil - mostrar lista primero
         if (window.innerWidth < 768) {
             switchTab('list');
         }
@@ -772,7 +906,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Error en inicialización:', error);
         showLoading(false);
-        showError('Error al inicializar la aplicación. Recargue la página.', 0);
+        showError('Error al inicializar la aplicación. Por favor, recargue la página.', 0);
     }
 });
 
@@ -783,3 +917,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 window.switchTab = switchTab;
 window.refreshData = refreshData;
 window.closeErrorToast = closeErrorToast;
+window.clearFilters = clearFilters;
+window.toggleFooterInfo = toggleFooterInfo;

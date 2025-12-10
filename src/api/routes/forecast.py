@@ -26,7 +26,8 @@ async def get_latest_forecast(db: AsyncSession = Depends(get_db)):
                                 'prob', prob,
                                 'rank_pct', rank_pct,
                                 'density', density,
-                                'horizon', horizon_days
+                                'horizon', horizon_days,
+                                'place', place
                             )
                         )
                     ), '[]'::json)
