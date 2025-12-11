@@ -6,4 +6,5 @@
 /data/
 /pgdata/
 /.env
+/docker-compose.yml
 /artifacts/etl_logs/
