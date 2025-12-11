@@ -804,7 +804,8 @@ function initLegend() {
         });
         html += `
             <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
-                Score relativo de riesgo de sismo ≥ M4.0 (ventana 7 días)
+                Score relativo de riesgo de sismo ≥ M4.0
+                <br>(Ventana 7 días)
             </div>
         `;
         div.innerHTML = html;
