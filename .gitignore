@@ -8,4 +8,3 @@
 /.env
 /docker-compose.yml
 /artifacts/etl_logs/
-/docker/nginx.conf
