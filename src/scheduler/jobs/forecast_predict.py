@@ -193,6 +193,9 @@ def build_national_tensor(
     # Producción: último día disponible (ayer)
     end_date = pd.Timestamp.now().date() - pd.Timedelta(days=1)
 
+    # --- FECHA MANUAL (BACKTESTING - Descomentar para pruebas pasadas) ---
+    #end_date = pd.Timestamp("2025-11-10").date() 
+
     full_idx = pd.date_range(
         end=end_date, periods=cfg.lookback_days, freq="D"
     )

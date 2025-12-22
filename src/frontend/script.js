@@ -682,7 +682,7 @@ async function loadMetadata() {
         if (modelBadge && data.model_version) {
             modelBadge.textContent = data.model_version;
         } else if (modelBadge && modelBadge.textContent === 'Cargando...') {
-            modelBadge.textContent = 'LSTM v3.3.1';
+            modelBadge.textContent = 'Bi-LSTM v3.3.1';
         }
 
         const maxProb = globalState.allZones.length > 0 

@@ -1512,3 +1512,8 @@ body.modal-open #map-view-container {
         min-height: 44px;
     }
 }
+
+/* Ocultar búsqueda y filtros en móvil para dar más espacio */
+    .search-filter-container {
+        display: none !important;
+    }
