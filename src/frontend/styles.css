@@ -1513,7 +1513,7 @@ body.modal-open #map-view-container {
     }
 }
 
-/* Ocultar búsqueda y filtros en móvil para dar más espacio */
+/* Ocultar búsqueda y filtros en móvil-escritorio para dar más espacio */
     .search-filter-container {
         display: none !important;
     }
