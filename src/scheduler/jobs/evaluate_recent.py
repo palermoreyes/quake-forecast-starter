@@ -6,8 +6,8 @@ from sqlalchemy import text
 from .common import get_engine, log
 
 # CONFIGURACIÓN
-TOLERANCIA_KM = 100      # radio de acierto en km
-EVALUAR_TOP_K = 50       # máximo rank a considerar (si hay menos, usa los que existan)
+TOLERANCIA_KM = 100        # radio científico recomendado
+EVALUAR_TOP_K = 25       # coherente con tu frontend y modelo
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -29,16 +29,14 @@ def main():
     engine = get_engine()
 
     with engine.connect() as conn:
-        # 1. Obtener el último Run de Predicción
-        q_run = text(
-            """
-            SELECT run_id, generated_at, input_max_time
+
+        # 1. Último Run
+        run = conn.execute(text("""
+            SELECT run_id, input_max_time
             FROM prediction_run
             ORDER BY run_id DESC
             LIMIT 1
-            """
-        )
-        run = conn.execute(q_run).mappings().first()
+        """)).mappings().first()
 
         if not run:
             log("No hay predicciones para evaluar.")
@@ -46,144 +44,149 @@ def main():
 
         run_id = run["run_id"]
 
-        # --- VERIFICAR DUPLICADOS ---
-        q_check = text(
-            "SELECT id FROM public.validation_realworld WHERE run_id = :rid"
-        )
-        existing = conn.execute(q_check, {"rid": run_id}).first()
+        # Evitar duplicados
+        exists = conn.execute(
+            text("SELECT 1 FROM validation_realworld WHERE run_id = :r"),
+            {"r": run_id}
+        ).first()
 
-        if existing:
-            log(
-                f"⚠️ El Run #{run_id} YA FUE VALIDADO anteriormente. "
-                "Se omite el registro para evitar duplicados."
-            )
+        if exists:
+            log(f"⚠️ Run #{run_id} ya fue evaluado.")
             return
 
-        # 2. Ventana de evaluación (día siguiente al input -> +7 días)
-        pred_start = pd.to_datetime(run["input_max_time"]) + pd.Timedelta(
-            days=1
-        )
-        pred_end = pred_start + pd.Timedelta(days=7) - pd.Timedelta(seconds=1)
+        # 2. Ventana temporal
+        pred_start = pd.to_datetime(run["input_max_time"]) + pd.Timedelta(days=1)
+        pred_end = pred_start + pd.Timedelta(days=7)
 
-        log(
-            f"Evaluando Run #{run_id} "
-            f"(Vigencia: {pred_start.date()} al {pred_end.date()})"
-        )
+        log(f"Evaluando Run #{run_id} ({pred_start.date()} → {pred_end.date()})")
 
-        # 3. Obtener Predicciones (Top-K por rank)
-        q_preds = text(
-            """
-            SELECT rank, lat, lon, place
-            FROM prediction_topk
-            WHERE run_id = :rid
-            ORDER BY rank ASC
-            LIMIT :k
-            """
-        )
+        # 3. Predicciones Top-K
         df_preds = pd.read_sql(
-            q_preds, conn, params={"rid": run_id, "k": EVALUAR_TOP_K}
-        )
-
-        total_alertas = len(df_preds)
-
-        # 4. Obtener Realidad (Sismos M4+ en la ventana)
-        q_real = text(
-            """
-            SELECT id, event_time_utc, lat, lon, magnitude, place
-            FROM events_clean
-            WHERE event_time_utc BETWEEN :start AND :end
-              AND magnitude >= 4.0
-            """
-        )
-        df_real = pd.read_sql(
-            q_real,
+            text("""
+                SELECT rank, lat, lon, place
+                FROM prediction_topk
+                WHERE run_id = :r
+                ORDER BY rank ASC
+                LIMIT :k
+            """),
             conn,
-            params={"start": pred_start, "end": pred_end},
+            params={"r": run_id, "k": EVALUAR_TOP_K}
+        )
+
+        # 4. Sismos reales
+        df_real = pd.read_sql(
+            text("""
+                SELECT id, event_time_utc, lat, lon, magnitude, place
+                FROM events_clean
+                WHERE event_time_utc BETWEEN :s AND :e
+                  AND magnitude >= 4.0
+            """),
+            conn,
+            params={"s": pred_start, "e": pred_end}
         )
 
         total_sismos = len(df_real)
-        log(f"Sismos Reales en ventana: {total_sismos}")
-        log(f"Alertas evaluadas (Top-{EVALUAR_TOP_K}): {total_alertas}")
+        total_alertas = len(df_preds)
 
-        # 5. Algoritmo de Matching (evento ↔ alerta)
-        aciertos_detalle = []
-        detectados_count = 0
+        detectados = 0
+        detalle = []
 
-        if total_sismos > 0 and total_alertas > 0:
-            for _, sismo in df_real.iterrows():
-                detectado = False
-                match_info = None
+        # 5. Matching por alerta (TRAZA INDIVIDUAL)
+        with engine.begin() as tx:
+            for _, pred in df_preds.iterrows():
 
-                for _, pred in df_preds.iterrows():
+                matched = False
+                best_match = None
+                best_dist = None
+
+                for _, sismo in df_real.iterrows():
                     dist = haversine_km(
-                        sismo["lat"],
-                        sismo["lon"],
-                        pred["lat"],
-                        pred["lon"],
+                        pred["lat"], pred["lon"],
+                        sismo["lat"], sismo["lon"]
                     )
-                    if dist < TOLERANCIA_KM:
-                        detectado = True
-                        match_info = (
-                            f"Alerta #{pred['rank']} a {int(dist)}km"
-                        )
+                    if dist <= TOLERANCIA_KM:
+                        matched = True
+                        best_match = sismo
+                        best_dist = dist
                         break
 
-                if detectado:
-                    detectados_count += 1
-                    aciertos_detalle.append(
-                        {
-                            "sismo_lugar": sismo["place"],
-                            "magnitud": sismo["magnitude"],
-                            "fecha": str(sismo["event_time_utc"]),
-                            "match": match_info,
-                        }
-                    )
+                if matched:
+                    detectados += 1
 
-        recall = (
-            detectados_count / total_sismos * 100
-            if total_sismos > 0
-            else 0.0
-        )
-        precision = (
-            detectados_count / total_alertas * 100
-            if total_alertas > 0
-            else 0.0
-        )
+                tx.execute(
+                    text("""
+                        INSERT INTO public.prediction_trace (
+                            run_id, rank, lat, lon, place,
+                            predicted_window_start, predicted_window_end,
+                            matched_event, matched_event_id,
+                            event_time_utc, event_magnitude, event_place,
+                            distance_km, tolerance_km
+                        )
+                        VALUES (
+                            :run_id, :rank, :lat, :lon, :place,
+                            :ws, :we,
+                            :matched, :eid,
+                            :etime, :mag, :eplace,
+                            :dist, :tol
+                        )
+                    """),
+                    {
+                        "run_id": run_id,
+                        "rank": pred["rank"],
+                        "lat": pred["lat"],
+                        "lon": pred["lon"],
+                        "place": pred["place"],
+                        "ws": pred_start.date(),
+                        "we": pred_end.date(),
+                        "matched": matched,
+                        "eid": best_match["id"] if matched else None,
+                        "etime": best_match["event_time_utc"] if matched else None,
+                        "mag": best_match["magnitude"] if matched else None,
+                        "eplace": best_match["place"] if matched else None,
+                        "dist": round(best_dist, 2) if matched else None,
+                        "tol": TOLERANCIA_KM
+                    }
+                )
 
-        # 6. GUARDAR EN BASE DE DATOS
-        log("Registrando auditoría en 'validation_realworld'...")
+                if matched:
+                    detalle.append({
+                        "rank": pred["rank"],
+                        "evento": best_match["place"],
+                        "magnitud": best_match["magnitude"],
+                        "dist_km": round(best_dist, 2)
+                    })
 
-        with engine.begin() as trans:
-            trans.execute(
-                text(
-                    """
-                    INSERT INTO public.validation_realworld
+        recall = (detectados / total_sismos * 100) if total_sismos else 0
+        precision = (detectados / total_alertas * 100) if total_alertas else 0
+
+        # 6. Guardar resumen agregado (como antes)
+        with engine.begin() as tx:
+            tx.execute(
+                text("""
+                    INSERT INTO validation_realworld
                     (run_id, window_start, window_end,
-                     total_sismos, sismos_detectados, recall_pct, aciertos_json)
+                     total_sismos, sismos_detectados,
+                     recall_pct, aciertos_json)
                     VALUES
-                    (:rid, :start, :end, :total, :det, :rec, :json)
-                    """
-                ),
+                    (:r, :s, :e, :ts, :d, :rec, :json)
+                """),
                 {
-                    "rid": run_id,
-                    "start": pred_start.date(),
-                    "end": pred_end.date(),
-                    "total": total_sismos,
-                    "det": detectados_count,
+                    "r": run_id,
+                    "s": pred_start.date(),
+                    "e": pred_end.date(),
+                    "ts": total_sismos,
+                    "d": detectados,
                     "rec": recall,
-                    "json": json.dumps(aciertos_detalle),
-                },
+                    "json": json.dumps(detalle)
+                }
             )
 
-        print("\n" + "=" * 40)
-        print(f" REPORTE GUARDADO EN BD (Run ID: {run_id})")
-        print(f" Ventana: {pred_start.date()} -> {pred_end.date()}")
-        print(f" Sismos Totales:   {total_sismos}")
-        print(f" Detectados (TP):  {detectados_count}")
-        print(f" Alertas usadas:   {total_alertas}")
-        print(f" Recall (hit rate): {recall:.1f}%")
-        print(f" Precision:         {precision:.1f}%")
-        print("=" * 40)
+        print("\n=== RESULTADO ===")
+        print(f"Sismos: {total_sismos}")
+        print(f"Alertas: {total_alertas}")
+        print(f"Detectados: {detectados}")
+        print(f"Recall: {recall:.1f}%")
+        print(f"Precision: {precision:.1f}%")
 
 
 if __name__ == "__main__":
