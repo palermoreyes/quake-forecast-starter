@@ -93,6 +93,13 @@ function getRiskLevel(prob) {
 }
 
 function showError(message, duration = 5000) {
+    // 📊 GA4: error del sistema
+    if (typeof gtag === 'function') {
+        gtag('event', 'system_error', {
+            error_message: message
+        });
+    }
+
     const toast = document.getElementById('error-toast');
     const messageEl = document.getElementById('error-message');
     
@@ -284,6 +291,14 @@ function initModeTabs() {
             tab.setAttribute('aria-selected', 'true');
 
             const mode = tab.dataset.mode;
+
+            // 📊 GA4: cambio de modo de visualización
+            if (typeof gtag === 'function') {
+                gtag('event', 'change_view_mode', {
+                    view_mode: mode
+                });
+            }
+
             if (mode === 'scientific') {
                 citizenPanel.classList.add('hidden');
                 scientificPanel.classList.remove('hidden');
@@ -387,6 +402,15 @@ function renderZonesList(zones) {
         `;
 
         const handleClick = (e) => {
+            // 📊 GA4: interacción con zona pronosticada
+            if (typeof gtag === 'function') {
+                gtag('event', 'zone_click', {
+                    probability: item.prob,
+                    rank: rank,
+                    latitude: item.lat,
+                    longitude: item.lon
+                });
+            }
             if (e.target.tagName === 'A') return;
             if (window.innerWidth < 768) switchTab('map');
             map.flyTo([item.lat, item.lon], 10, { duration: 1 });
@@ -829,6 +853,13 @@ async function refreshData() {
 
     showLoading(true);
 
+    // 📊 GA4: refresh manual del pronóstico
+    if (typeof gtag === 'function') {
+        gtag('event', 'refresh_forecast', {
+            event_category: 'interaction'
+        });
+    }
+
     try {
         await loadForecastData();
         await loadLastEvent();
@@ -879,8 +910,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 welcomeModal.show();
                 
                 // Guardar en localStorage cuando se cierre
-                modalEl.addEventListener('hidden.bs.modal', function() {
+                modalEl.addEventListener('hidden.bs.modal', function () {
                     localStorage.setItem('quakeForecastWelcomeSeen', 'true');
+
+                    // 📊 GA4: aceptación de aviso académico
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'accept_disclaimer', {
+                            event_category: 'engagement',
+                            event_label: 'welcome_modal'
+                        });
+                    }
                 });
             }
         }
@@ -910,6 +949,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showError('Error al inicializar la aplicación. Por favor, recargue la página.', 0);
     }
 });
+
 
 // ============================================================================
 // EXPORTAR FUNCIONES GLOBALES PARA USO EN HTML

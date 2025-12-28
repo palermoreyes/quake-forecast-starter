@@ -188,7 +188,7 @@ body {
 /* HEADER */
 
 .sidebar-header {
-    padding: 15px 20px;
+    padding: 10px 15px;
     background: rgba(255,255,255,0.02);
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
@@ -242,7 +242,7 @@ body {
 /* META DE RUN */
 
 .run-meta-container {
-    padding: 15px 25px;
+    padding: 10px 20px;
     border-bottom: 1px solid var(--border-color);
     background-color: rgba(0,0,0,0.2);
     flex-shrink: 0;
@@ -279,10 +279,10 @@ body {
 /* ALERT BOX */
 
 .alert-box {
-    margin: 15px 25px 8px;
-    padding: 12px;
+    margin: 10px 15px 8px;
+    padding: 8px;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     background: rgba(56, 139, 253, 0.1);
     border: 1px solid rgba(56, 139, 253, 0.4);
     color: #79c0ff;
@@ -313,7 +313,7 @@ body {
 .mode-tabs {
     display: flex;
     gap: 8px;
-    padding: 6px 20px 4px;
+    padding: 6px 20px 6px;
     border-bottom: 1px solid var(--border-color);
     background: rgba(0,0,0,0.25);
     flex-shrink: 0;
@@ -371,7 +371,7 @@ body {
 /* LISTA HEADER CON REFRESH */
 
 .list-header {
-    padding: 10px 25px;
+    padding: 5px 25px;
     background-color: #21262d;
     border-bottom: 1px solid var(--border-color);
     font-size: 0.8rem;
@@ -451,7 +451,7 @@ body {
 /* BÚSQUEDA Y FILTROS */
 
 .search-filter-container {
-    padding: 10px 20px;
+    padding: 5px 20px;
     background: rgba(0,0,0,0.3);
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -534,7 +534,7 @@ body {
 .pred-item {
     display: flex;
     align-items: center;
-    padding: 12px 25px;
+    padding: 7px 25px;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     cursor: pointer;
     transition: background var(--transition-fast), transform var(--transition-fast);
@@ -1282,7 +1282,7 @@ body.modal-open #map-view-container {
     }
 
     .run-meta-container {
-        padding: 8px 20px;
+        padding: 7px 16px;
         font-size: 0.75rem;
     }
 
