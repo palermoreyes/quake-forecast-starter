@@ -1469,6 +1469,11 @@ body.modal-open #map-view-container {
         font-size: 0.75rem;
         padding: 3px 0;
     }
+  
+/* Ocultar búsqueda y filtros en móvil-escritorio para dar más espacio */
+    .search-filter-container {
+        display: none !important;
+    }
 }
 
 /* Mejoras adicionales de accesibilidad */
@@ -1512,8 +1517,3 @@ body.modal-open #map-view-container {
         min-height: 44px;
     }
 }
-
-/* Ocultar búsqueda y filtros en móvil-escritorio para dar más espacio */
-    .search-filter-container {
-        display: none !important;
-    }
