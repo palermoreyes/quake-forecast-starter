@@ -71,7 +71,8 @@ services:
     volumes:
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./src/frontend:/usr/share/nginx/html:ro
-      - ~/certbot/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
 
     restart: unless-stopped
 
