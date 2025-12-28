@@ -194,3 +194,4 @@ Palermo Reyes, Paulo Arce
 Proyecto de Tesis – Ingeniería de Sistemas
 Universidad Privada del Norte
 Perú 🇵🇪
+2025
