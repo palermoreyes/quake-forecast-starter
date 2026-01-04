@@ -16,7 +16,7 @@ const CONFIG = {
         CRITICAL: { min: 0.30, color: '#ff0000', label: 'Crítico' },
         VERY_HIGH: { min: 0.20, color: '#ff4d4d', label: 'Muy alto' },
         HIGH: { min: 0.12, color: '#ff9f1c', label: 'Alto' },
-        MODERATE: { min: 0.05, color: '#ffeb3b', label: 'Leve' },
+        MODERATE: { min: 0.05, color: '#ffeb3b', label: 'Moderado' },
         LOW: { min: 0, color: 'transparent', label: 'Bajo' }
     },
     RETRY_ATTEMPTS: 3,
@@ -139,50 +139,6 @@ function closeErrorToast() {
     if (toast) toast.style.display = 'none';
 }
 
-// ============================================================================
-// AYUDA / GUÍA (UX)
-// ============================================================================
-
-let helpModalInstance = null;
-
-function openHelp(source = 'unknown') {
-    const modalEl = document.getElementById('helpModal');
-    if (!modalEl || typeof bootstrap === 'undefined') return;
-
-    if (!helpModalInstance) {
-        helpModalInstance = new bootstrap.Modal(modalEl, { keyboard: true });
-    }
-    helpModalInstance.show();
-
-    // 📊 GA4: apertura de ayuda
-    if (typeof gtag === 'function') {
-        gtag('event', 'open_help', {
-            event_category: 'engagement',
-            event_label: source
-        });
-    }
-}
-
-function initHelp() {
-    const ids = ['btn-help', 'btn-help-inline', 'btn-help-mobile'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('click', () => openHelp(id));
-    });
-
-    // Atajo de teclado: H o Shift+?
-    document.addEventListener('keydown', (e) => {
-        const isTyping = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-        if (isTyping) return;
-
-        if (e.key?.toLowerCase() === 'h' || (e.key === '?' && e.shiftKey)) {
-            e.preventDefault();
-            openHelp('keyboard');
-        }
-    });
-}
-
-
 function showLoading(show = true) {
     const overlay = document.getElementById('loading-overlay');
     if (overlay) {
@@ -289,27 +245,6 @@ const HomeControl = L.Control.extend({
     }
 });
 map.addControl(new HomeControl());
-
-const HelpControl = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd: function () {
-        const btn = L.DomUtil.create('button', 'map-help-btn');
-        btn.type = 'button';
-        btn.innerHTML = '❓';
-        btn.title = 'Ayuda / ¿Cómo leer el mapa?';
-        btn.setAttribute('aria-label', 'Abrir ayuda');
-
-        L.DomEvent.on(btn, 'click', function (e) {
-            L.DomEvent.stopPropagation(e);
-            L.DomEvent.preventDefault(e);
-            openHelp('map_control');
-        });
-
-        return btn;
-    }
-});
-map.addControl(new HelpControl());
-
 
 // ============================================================================
 // NAVEGACIÓN Y UI
@@ -446,7 +381,7 @@ function renderZonesList(zones) {
                     ${item.lat.toFixed(2)}°, ${item.lon.toFixed(2)}°
                 </div>
                 <span class="mag-badge">
-                    Magnitud estimada: ≥ ${item.mag_pred}
+                    Magnitud est.: ≥ ${item.mag_pred}
                 </span>
             </div>
             <div class="prob-container">
@@ -514,18 +449,15 @@ function renderMapMarkers(zones) {
         const probPct = (zone.prob * 100).toFixed(1);
         const safePlace = sanitizeHTML(zone.place || 'Ubicación desconocida');
         
+        const riskLabel = getRiskLevel(zone.prob);
         const popup = `
             <div class="popup-dark">
-                <div class="popup-header" style="color:${color}">NIVEL: ${getRiskLevel(zone.prob)} • ${probPct}%</div>
-                <div class="popup-row">
-                    <span class="popup-icon" aria-hidden="true">#</span> Celda: <strong>${sanitizeHTML(zone.cell_id)}</strong>
-                </div>
+                <div class="popup-header" style="color:${color}">NIVEL: ${sanitizeHTML(riskLabel)} • ${probPct}%</div>
                 <div class="popup-row">
                     <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
                 </div>
-                <div class="popup-row" style="opacity:0.9;">
-                    <span class="popup-icon" aria-hidden="true">ℹ️</span>
-                    Señal del modelo (7 días). No es alerta oficial.
+                <div class="popup-row" style="font-size:0.78rem;color:#8b949e;">
+                    Indicador del modelo (7 días, sismos ≥ M4.0)
                 </div>
                 <div style="margin-top:8px;">
                     <a href="https://www.google.com/maps/search/?api=1&query=${zone.lat},${zone.lon}"
@@ -883,7 +815,7 @@ function initLegend() {
             { label: 'Crítico (≥30%)', color: CONFIG.RISK_LEVELS.CRITICAL.color },
             { label: 'Muy alto (20–30%)', color: CONFIG.RISK_LEVELS.VERY_HIGH.color },
             { label: 'Alto (12–20%)', color: CONFIG.RISK_LEVELS.HIGH.color },
-            { label: 'Leve (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
+            { label: 'Moderado (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
         ];
 
         let html = '<h6>Nivel de riesgo</h6>';
@@ -897,8 +829,8 @@ function initLegend() {
         });
         html += `
             <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
-                Nivel de riesgo relativo (sismo ≥ M4.0) para los próximos 7 días.
-                <br>No es una alerta oficial.
+                Indicador comparativo (sismos ≥ M4.0)
+                <br>Ventana: 7 días
             </div>
         `;
         div.innerHTML = html;
@@ -960,6 +892,70 @@ window.addEventListener('resize', () => {
     }, 150);
 });
 
+
+
+// ============================================================================
+// AYUDA (UI PROGRESIVA)
+// ============================================================================
+
+let helpModalInstance = null;
+
+function openHelpModal() {
+    try {
+        if (helpModalInstance) {
+            helpModalInstance.show();
+            if (typeof gtag === 'function') {
+                gtag('event', 'open_help', { event_category: 'engagement' });
+            }
+        }
+    } catch (e) {
+        console.warn('No se pudo abrir ayuda:', e);
+    }
+}
+
+function initHelpUI() {
+    const helpEl = document.getElementById('helpModal');
+    if (helpEl && window.bootstrap?.Modal) {
+        helpModalInstance = new bootstrap.Modal(helpEl, { keyboard: true });
+    }
+
+    const ids = ['btn-help', 'btn-help-map', 'btn-help-mobile', 'btn-guide-inline'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            openHelpModal();
+        });
+    });
+
+    // Desde el modal de bienvenida: cerrar y abrir ayuda
+    const openFromWelcome = document.getElementById('open-help-from-welcome');
+    const welcomeEl = document.getElementById('welcomeModal');
+    if (openFromWelcome && welcomeEl && window.bootstrap?.Modal) {
+        openFromWelcome.addEventListener('click', (e) => {
+            e.preventDefault();
+            const inst = bootstrap.Modal.getInstance(welcomeEl) || new bootstrap.Modal(welcomeEl);
+            const onHidden = () => {
+                welcomeEl.removeEventListener('hidden.bs.modal', onHidden);
+                openHelpModal();
+            };
+            welcomeEl.addEventListener('hidden.bs.modal', onHidden);
+            inst.hide();
+        });
+    }
+
+    // Atajo: H
+    document.addEventListener('keydown', (e) => {
+        const key = (e.key || '').toLowerCase();
+        const active = document.activeElement;
+        const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+        if (!isTyping && key === 'h') {
+            openHelpModal();
+        }
+    });
+}
+
 // ============================================================================
 // INICIALIZACIÓN
 // ============================================================================
@@ -996,10 +992,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         showLoading(true);
         
         // Inicializar UI
+        initHelpUI();
         initModeTabs();
         initFilters();
         initLegend();
-        initHelp();
         
         // Cargar datos EN ORDEN
         await loadForecastData();
@@ -1026,8 +1022,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================================
 
 window.switchTab = switchTab;
+window.openHelp = openHelpModal;
 window.refreshData = refreshData;
 window.closeErrorToast = closeErrorToast;
 window.clearFilters = clearFilters;
 window.toggleFooterInfo = toggleFooterInfo;
-window.openHelp = openHelp;

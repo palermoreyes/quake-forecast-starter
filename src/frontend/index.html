@@ -63,35 +63,33 @@
                         Bienvenido a la primera plataforma de <strong>pronóstico sísmico experimental</strong> para el Perú basada en Deep Learning.
                     </p>
                     
-                    <div class="feature-list">
+                    
+
+                    <div class="quick-steps" aria-label="Cómo usar el mapa">
+                        <div class="qs-title">Cómo usarlo (30s)</div>
+                        <ul class="qs-list">
+                            <li>Colores: nivel relativo para 7 días (sismos ≥ M4.0).</li>
+                            <li>Haz clic en una zona para ver detalle y porcentaje.</li>
+                            <li>Usa la lista para buscar y filtrar.</li>
+                        </ul>
+                        <button type="button" class="help-link" id="open-help-from-welcome">Ver guía rápida</button>
+                    </div>
+<div class="feature-list">
                         <div class="feature-item">
                             <span class="f-icon" aria-hidden="true">🧠</span>
                             <div>
-                                <strong>Inteligencia Artificial</strong>
-                                <p>Analiza patrones del historial sísmico con IA. (LSTM)</p>
+                                <strong>IA experimental</strong>
+                                <p>Detecta patrones en datos históricos para resaltar zonas con mayor señal.</p>
                             </div>
                         </div>
                         <div class="feature-item">
                             <span class="f-icon" aria-hidden="true">📅</span>
                             <div>
-                                <strong>Pronóstico Semanal</strong>
-                                <p>El sistema estima un nivel de riesgo relativo de sismos (M4.0+) para los próximos 7 días.</p>
+                                <strong>Fuente oficial a mano</strong>
+                                <p>Incluye el widget del último sismo del IGP y enlace al reporte.</p>
                             </div>
                         </div>
                     </div>
-
-                    <div class="quick-steps mt-3" aria-label="Guía rápida de uso">
-                        <div class="quick-steps-title">¿Cómo funciona? (en 30 segundos)</div>
-                        <ol class="quick-steps-list">
-                            <li><strong>El modelo revisa</strong> patrones históricos y calcula un <strong>nivel de riesgo relativo</strong> por zona.</li>
-                            <li><strong>Colores y %</strong>: mientras más alto, más “atención” recomienda el modelo para los próximos 7 días.</li>
-                            <li><strong>Explora</strong>: toca una zona en el mapa o en la lista para ver detalles y abrirla en Google Maps.</li>
-                        </ol>
-                        <div class="quick-steps-footnote">
-                            No es una alerta oficial ni garantiza que ocurra un sismo. Para emergencias, usa información del IGP/INDECI.
-                        </div>
-                    </div>
-
 
                     <div class="alert alert-warning d-flex align-items-start mt-3" role="alert">
                         <div style="font-size: 1.5rem; margin-right: 12px;" aria-hidden="true">⚠️</div>
@@ -114,129 +112,11 @@
         </div>
     </div>
 
-
-
-    <!-- Modal de Ayuda -->
-    <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content dark-modal">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title" id="helpLabel">❓ Ayuda: ¿Cómo leer el mapa?</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar ayuda"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="lead-text" style="margin-bottom:12px;">
-                        Este visor muestra dónde el modelo detecta <strong>patrones inusuales</strong> y recomienda <strong>mayor atención</strong> en los próximos 7 días.
-                        No es una alerta oficial.
-                    </p>
-
-                    <div class="accordion" id="helpAccordion">
-                        <div class="accordion-item bg-transparent border-0">
-                            <h2 class="accordion-header" id="h1">
-                                <button class="accordion-button collapsed help-acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#hc1" aria-expanded="false" aria-controls="hc1">
-                                    1) ¿Qué significa el porcentaje (%)?
-                                </button>
-                            </h2>
-                            <div id="hc1" class="accordion-collapse collapse" aria-labelledby="h1" data-bs-parent="#helpAccordion">
-                                <div class="accordion-body help-acc-body">
-                                    Es un <strong>score relativo</strong> (0–100) del modelo: sirve para comparar zonas entre sí.
-                                    <br><strong>No</strong> significa “probabilidad exacta” ni garantiza que ocurrirá un sismo.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item bg-transparent border-0">
-                            <h2 class="accordion-header" id="h2">
-                                <button class="accordion-button collapsed help-acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#hc2" aria-expanded="false" aria-controls="hc2">
-                                    2) ¿Qué significan los colores?
-                                </button>
-                            </h2>
-                            <div id="hc2" class="accordion-collapse collapse" aria-labelledby="h2" data-bs-parent="#helpAccordion">
-                                <div class="accordion-body help-acc-body">
-                                    Los colores agrupan el score en niveles para lectura rápida:
-                                    <ul class="help-ul">
-                                        <li><strong>Rojo:</strong> crítico (≥30%)</li>
-                                        <li><strong>Rojo claro:</strong> muy alto (20–30%)</li>
-                                        <li><strong>Naranja:</strong> alto (12–20%)</li>
-                                        <li><strong>Amarillo:</strong> leve (5–12%)</li>
-                                    </ul>
-                                    Si una zona no aparece, su score está por debajo del mínimo mostrado.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item bg-transparent border-0">
-                            <h2 class="accordion-header" id="h3">
-                                <button class="accordion-button collapsed help-acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#hc3" aria-expanded="false" aria-controls="hc3">
-                                    3) ¿Cómo usar la página?
-                                </button>
-                            </h2>
-                            <div id="hc3" class="accordion-collapse collapse" aria-labelledby="h3" data-bs-parent="#helpAccordion">
-                                <div class="accordion-body help-acc-body">
-                                    <ol class="help-ol">
-                                        <li>En la <strong>lista</strong>, toca una zona para que el mapa vaya a esa ubicación.</li>
-                                        <li>En el <strong>mapa</strong>, toca un punto para ver el popup con detalles.</li>
-                                        <li>Usa <strong>buscar</strong> (lugar o coordenadas) y el <strong>filtro</strong> de nivel.</li>
-                                        <li>Revisa la <strong>vigencia</strong> del pronóstico (rango de fechas) en la parte superior.</li>
-                                    </ol>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item bg-transparent border-0">
-                            <h2 class="accordion-header" id="h4">
-                                <button class="accordion-button collapsed help-acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#hc4" aria-expanded="false" aria-controls="hc4">
-                                    4) Limitaciones y fuentes oficiales
-                                </button>
-                            </h2>
-                            <div id="hc4" class="accordion-collapse collapse" aria-labelledby="h4" data-bs-parent="#helpAccordion">
-                                <div class="accordion-body help-acc-body">
-                                    Proyecto académico (Tesis UPN). Úsalo con fines informativos y educativos.
-                                    Para alertas y recomendaciones oficiales, consulta siempre:
-                                    <ul class="help-ul">
-                                        <li><strong>IGP:</strong> registro de sismos</li>
-                                        <li><strong>INDECI:</strong> recomendaciones y preparación</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item bg-transparent border-0">
-                            <h2 class="accordion-header" id="h5">
-                                <button class="accordion-button collapsed help-acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#hc5" aria-expanded="false" aria-controls="hc5">
-                                    Glosario rápido (sin tecnicismos)
-                                </button>
-                            </h2>
-                            <div id="hc5" class="accordion-collapse collapse" aria-labelledby="h5" data-bs-parent="#helpAccordion">
-                                <div class="accordion-body help-acc-body">
-                                    <ul class="help-ul">
-                                        <li><strong>Score:</strong> valor para comparar zonas (más alto = más atención).</li>
-                                        <li><strong>Ventana 7 días:</strong> el periodo futuro que evalúa el pronóstico.</li>
-                                        <li><strong>Umbral:</strong> punto desde el cual el modelo considera “actividad inusual” (para análisis).</li>
-                                        <li><strong>Detalles técnicos:</strong> métricas y datos para investigación.</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="help-footer-note">
-                        Tip: Si estás en PC, puedes presionar la tecla <strong>H</strong> para abrir esta ayuda.
-                    </div>
-                </div>
-
-                <div class="modal-footer border-0 justify-content-center">
-                    <button type="button" class="btn btn-primary w-100 py-2 fw-bold" data-bs-dismiss="modal">
-                        LISTO ✅
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Vista mapa -->
     <div id="map-view-container" class="active">
         <div id="map" role="application" aria-label="Mapa interactivo de riesgo sísmico de Perú"></div>
+
+        <button type="button" class="map-help-btn" id="btn-help-map" aria-label="Abrir guía rápida" title="Ayuda">❓</button>
 
         <!-- Widget Último Sismo IGP -->
         <div class="last-quake-container" role="complementary" aria-label="Último sismo registrado por el IGP">
@@ -277,17 +157,13 @@
             <div class="d-flex justify-content-between align-items-center">
                 <h1 class="app-title">Quake Forecast AI</h1>
                 <div class="d-flex align-items-center gap-2">
-                    <button class="help-btn" id="btn-help" type="button"
-                            aria-label="Abrir ayuda: ¿Cómo funciona el mapa?"
-                            title="Ayuda / ¿Cómo leer el mapa?">
-                        ❓
-                    </button>
-                    <span class="badge-model" id="model-badge">Cargando...</span>
-                </div>
+                <span class="badge-model" id="model-badge">Cargando...</span>
+                <button type="button" class="icon-btn" id="btn-help" aria-label="Abrir guía rápida" title="Ayuda">❓</button>
+            </div>
             </div>
             <div class="status-indicator">
                 <span class="status-dot" aria-hidden="true"></span> 
-                <span>Sistema en línea</span>
+                <span>Sistema Operativo</span>
             </div>
         </div>
 
@@ -318,7 +194,7 @@
             <div id="recommendation-text"></div>
         </div>
 
-        <!-- Tabs de modo (Ciudadanía / Panel científico) -->
+        <!-- Tabs de modo (Ciudadanía / Detalles técnicos) -->
         <div class="mode-tabs" role="tablist" aria-label="Seleccionar modo de visualización">
             <button class="mode-tab active" data-mode="citizen" id="tab-citizen" role="tab" aria-selected="true" aria-controls="citizen-panel">
                 Visión ciudadana
@@ -337,18 +213,14 @@
                 </button>
             </div>
 
-            <!-- Guía rápida (no técnica) -->
+
+            <!-- Guía ciudadana (sutil) -->
             <div class="citizen-guide" id="citizen-guide" role="note" aria-label="Guía rápida para entender el mapa">
-                <div class="cg-left">
-                    <div class="cg-title">Cómo leer el mapa</div>
-                    <div class="cg-text">
-                        Los colores muestran un <strong>nivel de riesgo relativo</strong> del modelo para los próximos 7 días.
-                        Toca una zona (en el mapa o en la lista) para ver detalles.
-                    </div>
+                <div class="cg-text">
+                    <strong>Cómo leer:</strong> colores = nivel relativo (7 días, sismos ≥ M4.0).
+                    Toca una zona para ver detalle.
                 </div>
-                <button class="cg-help-btn" type="button" id="btn-help-inline" aria-label="Abrir ayuda">
-                    Abrir ayuda ❓
-                </button>
+                <button type="button" class="cg-link" id="btn-guide-inline" aria-label="Abrir guía rápida">Guía</button>
             </div>
 
             <!-- Barra de búsqueda y filtros -->
@@ -408,9 +280,8 @@
             <div class="sci-header">
                 <h2 class="sci-title">Detalles técnicos</h2>
                 <p class="sci-subtitle">
-                    Resumen técnico del pronóstico actual.
-                    Si buscas una explicación simple, abre <strong>Ayuda ❓</strong>.
-                    (Modelo de investigación, no operativo oficial).
+                    Resumen técnico del pronóstico actual
+                    (modelo de investigación, no operativo oficial).
                 </p>
             </div>
 
@@ -436,7 +307,7 @@
                     <span class="sci-value" id="sci-avgprob">--</span>
                 </div>
                 <div class="sci-item">
-                    <span class="sci-label">Umbral de análisis (calibración):</span>
+                    <span class="sci-label">Umbral operativo (F1 óptimo):</span>
                     <span class="sci-value" id="sci-threshold">--</span>
                 </div>
                 <div class="sci-item">
@@ -455,13 +326,17 @@
 
             <div class="sci-notes">
                 <p>
-                    • Los porcentajes son un <strong>indicador del modelo</strong> para comparar zonas (7 días, sismos ≥ M4.0). No son “probabilidad exacta”.
+                    • Las probabilidades mostradas son <strong>scores relativos</strong> del modelo
+                    para sismos ≥ M4.0 en una ventana de 7 días, no una probabilidad física exacta.
                 </p>
                 <p>
-                    • El “umbral” es un valor de referencia obtenido en la calibración del modelo (pruebas históricas).
+                    • El umbral operativo proviene de la calibración
+                    del modelo en un conjunto de prueba histórico, maximizando el F1-Score.
                 </p>
                 <p>
-                    • Este panel es para investigación: revisar métricas, cobertura espacial y comportamiento del modelo.
+                    • Este panel está diseñado para uso académico y científico:
+                    interpretar desempeño, distribución espacial del riesgo y
+                    comportamiento del modelo.
                 </p>
             </div>
             
@@ -470,7 +345,96 @@
                 <strong>ℹ️ Proyecto académico (Tesis Universitaria - UPN)</strong> - Para alertas oficiales consulta con INDECI / IGP
             </div>
         </div>
+    
     </div>
+
+    <!-- Modal de ayuda (progresivo, no invasivo) -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content dark-modal">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title" id="helpLabel">Guía rápida</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-card">
+                        <div class="help-kicker">En 30 segundos</div>
+                        <ol class="help-steps">
+                            <li><strong>Colores</strong>: comparan zonas con mayor señal del modelo (7 días, sismos ≥ M4.0).</li>
+                            <li><strong>Porcentaje</strong>: indicador relativo del modelo para esa zona (no es alerta oficial).</li>
+                            <li><strong>Explora</strong>: toca una zona o usa la lista para buscar y filtrar.</li>
+                        </ol>
+                    </div>
+
+                    <div class="accordion accordion-flush mt-3" id="helpAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="h1">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hc1" aria-expanded="false" aria-controls="hc1">
+                                    ¿Qué significa el porcentaje?
+                                </button>
+                            </h2>
+                            <div id="hc1" class="accordion-collapse collapse" aria-labelledby="h1" data-bs-parent="#helpAccordion">
+                                <div class="accordion-body">
+                                    Es un <strong>indicador comparativo</strong> calculado por el modelo con base en datos históricos.
+                                    Sirve para <strong>priorizar zonas</strong> dentro del mapa. No reemplaza reportes oficiales.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="h2">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hc2" aria-expanded="false" aria-controls="hc2">
+                                    ¿Qué significa cada color?
+                                </button>
+                            </h2>
+                            <div id="hc2" class="accordion-collapse collapse" aria-labelledby="h2" data-bs-parent="#helpAccordion">
+                                <div class="accordion-body">
+                                    <ul class="help-bullets">
+                                        <li><span class="dot critical"></span> <strong>Crítico</strong>: señal alta (≥30%)</li>
+                                        <li><span class="dot veryhigh"></span> <strong>Muy alto</strong>: 20–30%</li>
+                                        <li><span class="dot high"></span> <strong>Alto</strong>: 12–20%</li>
+                                        <li><span class="dot moderate"></span> <strong>Moderado</strong>: 5–12%</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="h3">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hc3" aria-expanded="false" aria-controls="hc3">
+                                    ¿Qué puedo hacer aquí?
+                                </button>
+                            </h2>
+                            <div id="hc3" class="accordion-collapse collapse" aria-labelledby="h3" data-bs-parent="#helpAccordion">
+                                <div class="accordion-body">
+                                    • Ver zonas resaltadas y su indicador<br>
+                                    • Abrir una zona en Google Maps<br>
+                                    • Consultar el <strong>último sismo</strong> del IGP (widget)
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="h4">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hc4" aria-expanded="false" aria-controls="hc4">
+                                    Alcance y fuentes
+                                </button>
+                            </h2>
+                            <div id="hc4" class="accordion-collapse collapse" aria-labelledby="h4" data-bs-parent="#helpAccordion">
+                                <div class="accordion-body">
+                                    Proyecto académico. Para alertas y reportes oficiales: <strong>IGP</strong> e <strong>INDECI</strong>.
+                                    El widget “Último sismo” usa la fuente pública del IGP.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="help-footer-hint">Tip: presiona <kbd>H</kbd> para abrir esta guía.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
 
     <!-- Navegación móvil (mapa / panel) -->
     <nav class="mobile-nav" aria-label="Navegación principal móvil">
@@ -482,8 +446,8 @@
             <span class="nav-icon" aria-hidden="true">🌎</span> 
             <span>Mapa</span>
         </button>
-        <button class="nav-btn" onclick="openHelp('mobile_nav')" id="btn-help-mobile" aria-label="Abrir ayuda" aria-current="false">
-            <span class="nav-icon" aria-hidden="true">❓</span> 
+        <button class="nav-btn" onclick="openHelp()" id="btn-help-mobile" aria-label="Abrir guía rápida" aria-current="false">
+            <span class="nav-icon" aria-hidden="true">❓</span>
             <span>Ayuda</span>
         </button>
     </nav>
