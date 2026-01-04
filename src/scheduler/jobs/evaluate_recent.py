@@ -1,16 +1,33 @@
-import os
 import pandas as pd
 import math
 import json
 from sqlalchemy import text
 from .common import get_engine, log
 
-# CONFIGURACIÓN
-TOLERANCIA_KM = 100        # radio científico recomendado
-EVALUAR_TOP_K = 25       # coherente con tu frontend y modelo
+# =============================================================================
+# CONFIGURACIÓN CIENTÍFICA
+# =============================================================================
 
+# Radio de tolerancia espacial (criterio científico)
+# 100 km es consistente con:
+# - propagación de ondas sísmicas
+# - resolución del grid
+# - literatura sismológica regional
+TOLERANCIA_KM = 100
+
+# Número de alertas evaluadas por corrida
+# Coherente con frontend (Top-25) y enfoque operativo
+EVALUAR_TOP_K = 25
+
+
+# =============================================================================
+# UTILIDADES
+# =============================================================================
 
 def haversine_km(lat1, lon1, lat2, lon2):
+    """
+    Distancia Haversine entre dos puntos geográficos (km).
+    """
     R = 6371.0
     dLat = math.radians(lat2 - lat1)
     dLon = math.radians(lon2 - lon1)
@@ -24,19 +41,27 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return R * c
 
 
+# =============================================================================
+# PROCESO PRINCIPAL
+# =============================================================================
+
 def main():
     log("=== INICIANDO VALIDACIÓN (HISTÓRICO) ===")
     engine = get_engine()
 
     with engine.connect() as conn:
 
-        # 1. Último Run
-        run = conn.execute(text("""
-            SELECT run_id, input_max_time
-            FROM prediction_run
-            ORDER BY run_id DESC
-            LIMIT 1
-        """)).mappings().first()
+        # ---------------------------------------------------------------------
+        # 1. OBTENER ÚLTIMA CORRIDA DE PRONÓSTICO
+        # ---------------------------------------------------------------------
+        run = conn.execute(
+            text("""
+                SELECT run_id, input_max_time
+                FROM prediction_run
+                ORDER BY run_id DESC
+                LIMIT 1
+            """)
+        ).mappings().first()
 
         if not run:
             log("No hay predicciones para evaluar.")
@@ -44,23 +69,32 @@ def main():
 
         run_id = run["run_id"]
 
-        # Evitar duplicados
+        # Evitar evaluaciones duplicadas
         exists = conn.execute(
-            text("SELECT 1 FROM validation_realworld WHERE run_id = :r"),
+            text("""
+                SELECT 1
+                FROM validation_realworld
+                WHERE run_id = :r
+            """),
             {"r": run_id}
         ).first()
 
         if exists:
-            log(f"⚠️ Run #{run_id} ya fue evaluado.")
+            log(f"⚠️ Run #{run_id} ya fue evaluado. Se omite.")
             return
 
-        # 2. Ventana temporal
+        # ---------------------------------------------------------------------
+        # 2. DEFINIR VENTANA DE VALIDACIÓN
+        # ---------------------------------------------------------------------
+        # Día siguiente al último dato usado → ventana de 7 días
         pred_start = pd.to_datetime(run["input_max_time"]) + pd.Timedelta(days=1)
         pred_end = pred_start + pd.Timedelta(days=7)
 
         log(f"Evaluando Run #{run_id} ({pred_start.date()} → {pred_end.date()})")
 
-        # 3. Predicciones Top-K
+        # ---------------------------------------------------------------------
+        # 3. CARGAR PREDICCIONES (TOP-K)
+        # ---------------------------------------------------------------------
         df_preds = pd.read_sql(
             text("""
                 SELECT rank, lat, lon, place
@@ -73,7 +107,9 @@ def main():
             params={"r": run_id, "k": EVALUAR_TOP_K}
         )
 
-        # 4. Sismos reales
+        # ---------------------------------------------------------------------
+        # 4. CARGAR SISMOS REALES (IGP, M ≥ 4.0)
+        # ---------------------------------------------------------------------
         df_real = pd.read_sql(
             text("""
                 SELECT id, event_time_utc, lat, lon, magnitude, place
@@ -91,7 +127,11 @@ def main():
         detectados = 0
         detalle = []
 
-        # 5. Matching por alerta (TRAZA INDIVIDUAL)
+        # ---------------------------------------------------------------------
+        # 5. MATCHING ALERTA ↔ REALIDAD (TRAZA INDIVIDUAL)
+        # ---------------------------------------------------------------------
+        # Cada alerta se evalúa individualmente contra los sismos reales.
+        # Se registra si existe al menos un evento dentro del radio tolerado.
         with engine.begin() as tx:
             for _, pred in df_preds.iterrows():
 
@@ -113,21 +153,40 @@ def main():
                 if matched:
                     detectados += 1
 
+                # Guardar traza histórica por alerta
                 tx.execute(
                     text("""
                         INSERT INTO public.prediction_trace (
-                            run_id, rank, lat, lon, place,
-                            predicted_window_start, predicted_window_end,
-                            matched_event, matched_event_id,
-                            event_time_utc, event_magnitude, event_place,
-                            distance_km, tolerance_km
+                            run_id,
+                            rank,
+                            lat,
+                            lon,
+                            place,
+                            predicted_window_start,
+                            predicted_window_end,
+                            matched_event,
+                            matched_event_id,
+                            event_time_utc,
+                            event_magnitude,
+                            event_place,
+                            distance_km,
+                            tolerance_km
                         )
                         VALUES (
-                            :run_id, :rank, :lat, :lon, :place,
-                            :ws, :we,
-                            :matched, :eid,
-                            :etime, :mag, :eplace,
-                            :dist, :tol
+                            :run_id,
+                            :rank,
+                            :lat,
+                            :lon,
+                            :place,
+                            :ws,
+                            :we,
+                            :matched,
+                            :eid,
+                            :etime,
+                            :mag,
+                            :eplace,
+                            :dist,
+                            :tol
                         )
                     """),
                     {
@@ -150,25 +209,42 @@ def main():
 
                 if matched:
                     detalle.append({
-                        "rank": pred["rank"],
+                        "rank": int(pred["rank"]),
                         "evento": best_match["place"],
-                        "magnitud": best_match["magnitude"],
+                        "magnitud": float(best_match["magnitude"]),
                         "dist_km": round(best_dist, 2)
                     })
 
-        recall = (detectados / total_sismos * 100) if total_sismos else 0
-        precision = (detectados / total_alertas * 100) if total_alertas else 0
+        # ---------------------------------------------------------------------
+        # 6. MÉTRICAS AGREGADAS
+        # ---------------------------------------------------------------------
+        recall = (detectados / total_sismos * 100) if total_sismos else 0.0
+        precision = (detectados / total_alertas * 100) if total_alertas else 0.0
 
-        # 6. Guardar resumen agregado (como antes)
+        # ---------------------------------------------------------------------
+        # 7. GUARDAR RESUMEN GLOBAL
+        # ---------------------------------------------------------------------
         with engine.begin() as tx:
             tx.execute(
                 text("""
-                    INSERT INTO validation_realworld
-                    (run_id, window_start, window_end,
-                     total_sismos, sismos_detectados,
-                     recall_pct, aciertos_json)
-                    VALUES
-                    (:r, :s, :e, :ts, :d, :rec, :json)
+                    INSERT INTO validation_realworld (
+                        run_id,
+                        window_start,
+                        window_end,
+                        total_sismos,
+                        sismos_detectados,
+                        recall_pct,
+                        aciertos_json
+                    )
+                    VALUES (
+                        :r,
+                        :s,
+                        :e,
+                        :ts,
+                        :d,
+                        :rec,
+                        :json
+                    )
                 """),
                 {
                     "r": run_id,
@@ -181,13 +257,21 @@ def main():
                 }
             )
 
-        print("\n=== RESULTADO ===")
-        print(f"Sismos: {total_sismos}")
-        print(f"Alertas: {total_alertas}")
-        print(f"Detectados: {detectados}")
-        print(f"Recall: {recall:.1f}%")
-        print(f"Precision: {precision:.1f}%")
+        # ---------------------------------------------------------------------
+        # 8. REPORTE EN CONSOLA
+        # ---------------------------------------------------------------------
+        print("\n=== RESULTADO VALIDACIÓN REAL-WORLD ===")
+        print(f"Sismos reales (M≥4.0): {total_sismos}")
+        print(f"Alertas evaluadas:      {total_alertas}")
+        print(f"Alertas acertadas:      {detectados}")
+        print(f"Recall:                {recall:.1f}%")
+        print(f"Precision:             {precision:.1f}%")
+        print("=======================================")
 
+
+# =============================================================================
+# ENTRYPOINT
+# =============================================================================
 
 if __name__ == "__main__":
     main()
