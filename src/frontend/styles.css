@@ -410,8 +410,10 @@ body {
 @media (max-width: 520px){
     .meta-guide{
         font-size: 0.74rem;
-        padding: 7px 9px;
-    }
+        padding: 6px 10px;
+        border-left-width: 2px;
+        background: rgba(13,17,23,0.28);
+}
 }
 .refresh-btn {
     background: rgba(88, 166, 255, 0.1);
