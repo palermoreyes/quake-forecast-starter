@@ -385,6 +385,34 @@ body {
     flex-shrink: 0;
 }
 
+
+/* ---- Guía inline (debajo del contador) ---- */
+.list-header{
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.meta-guide{
+    flex: 1 0 100%;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: rgba(230, 237, 243, 0.78);
+    margin-top: 2px;
+    padding: 7px 10px;
+    border-left: 3px solid rgba(88, 166, 255, 0.55);
+    background: rgba(13, 17, 23, 0.35);
+    border-radius: 12px;
+}
+
+@media (max-width: 520px){
+    .meta-guide{
+        font-size: 0.74rem;
+        padding: 7px 9px;
+    }
+}
 .refresh-btn {
     background: rgba(88, 166, 255, 0.1);
     border: 1px solid rgba(88, 166, 255, 0.3);
