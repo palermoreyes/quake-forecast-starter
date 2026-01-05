@@ -202,9 +202,16 @@
         <div id="citizen-panel" role="tabpanel" aria-labelledby="tab-citizen">
             <div class="list-header" id="topk-header">
                 <span id="zones-count" aria-live="polite">Cargando zonas...</span>
+                <div class="list-actions">
                 <button id="refresh-btn" class="refresh-btn" onclick="refreshData()" aria-label="Actualizar datos del pronóstico" title="Actualizar datos" aria-busy="false">
                     🔄
                 </button>
+                <button id="help-btn" class="help-btn" onclick="openWelcomeModal()" aria-label="Abrir guía inicial" title="¿Cómo funciona?" type="button">
+                    ❓
+                </button>
+            </div>
+                <span class="meta-label">Las zonas del mapa muestran la probabilidad de que ocurra un sismo de magnitud ≥ 4.0 en los próximos 7 días. Toca una zona para ver el detalle.</span>
+                
             </div>
 
             <!-- Barra de búsqueda y filtros -->
@@ -335,7 +342,11 @@
             <span class="nav-icon" aria-hidden="true">🌎</span> 
             <span>Mapa</span>
         </button>
-    </nav>
+            <button class="nav-btn" onclick="openWelcomeModal()" id="btn-help" aria-label="Abrir guía" aria-current="false" type="button">
+            <span class="nav-icon" aria-hidden="true">❓</span> 
+            <span>Guía</span>
+        </button>
+</nav>
 
     <!-- JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

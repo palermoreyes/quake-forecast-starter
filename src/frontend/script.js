@@ -15,8 +15,8 @@ const CONFIG = {
     RISK_LEVELS: {
         CRITICAL: { min: 0.30, color: '#ff0000', label: 'Crítico' },
         VERY_HIGH: { min: 0.20, color: '#ff4d4d', label: 'Muy alto' },
-        HIGH: { min: 0.12, color: '#ff9f1c', label: 'Alto operativo' },
-        MODERATE: { min: 0.05, color: '#ffeb3b', label: 'Leve' },
+        HIGH: { min: 0.12, color: '#ff9f1c', label: 'Alto' },
+        MODERATE: { min: 0.05, color: '#ffeb3b', label: 'Moderado' },
         LOW: { min: 0, color: 'transparent', label: 'Bajo' }
     },
     RETRY_ATTEMPTS: 3,
@@ -381,7 +381,7 @@ function renderZonesList(zones) {
                     ${item.lat.toFixed(2)}°, ${item.lon.toFixed(2)}°
                 </div>
                 <span class="mag-badge">
-                    Mag Est: ≥ ${item.mag_pred}
+                    Magnitud est.: ≥ ${item.mag_pred}
                 </span>
             </div>
             <div class="prob-container">
@@ -449,14 +449,15 @@ function renderMapMarkers(zones) {
         const probPct = (zone.prob * 100).toFixed(1);
         const safePlace = sanitizeHTML(zone.place || 'Ubicación desconocida');
         
+        const riskLabel = getRiskLevel(zone.prob);
         const popup = `
             <div class="popup-dark">
-                <div class="popup-header" style="color:${color}">RIESGO: ${probPct}%</div>
-                <div class="popup-row">
-                    <span class="popup-icon" aria-hidden="true">#</span> Celda: <strong>${sanitizeHTML(zone.cell_id)}</strong>
-                </div>
+                <div class="popup-header" style="color:${color}">NIVEL: ${sanitizeHTML(riskLabel)} • ${probPct}%</div>
                 <div class="popup-row">
                     <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
+                </div>
+                <div class="popup-row" style="font-size:0.78rem;color:#8b949e;">
+                    Indicador del modelo (7 días, sismos ≥ M4.0)
                 </div>
                 <div style="margin-top:8px;">
                     <a href="https://www.google.com/maps/search/?api=1&query=${zone.lat},${zone.lon}"
@@ -813,8 +814,8 @@ function initLegend() {
         const grades = [
             { label: 'Crítico (≥30%)', color: CONFIG.RISK_LEVELS.CRITICAL.color },
             { label: 'Muy alto (20–30%)', color: CONFIG.RISK_LEVELS.VERY_HIGH.color },
-            { label: 'Alto operativo (12–20%)', color: CONFIG.RISK_LEVELS.HIGH.color },
-            { label: 'Leve (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
+            { label: 'Alto (12–20%)', color: CONFIG.RISK_LEVELS.HIGH.color },
+            { label: 'Moderado (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
         ];
 
         let html = '<h6>Nivel de riesgo</h6>';
@@ -828,8 +829,8 @@ function initLegend() {
         });
         html += `
             <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
-                Score relativo de riesgo de sismo ≥ M4.0
-                <br>(Ventana 7 días)
+                Indicador comparativo (sismos ≥ M4.0)
+                <br>Ventana: 7 días
             </div>
         `;
         div.innerHTML = html;
@@ -891,6 +892,70 @@ window.addEventListener('resize', () => {
     }, 150);
 });
 
+
+
+// ============================================================================
+// AYUDA (UI PROGRESIVA)
+// ============================================================================
+
+let helpModalInstance = null;
+
+function openHelpModal() {
+    try {
+        if (helpModalInstance) {
+            helpModalInstance.show();
+            if (typeof gtag === 'function') {
+                gtag('event', 'open_help', { event_category: 'engagement' });
+            }
+        }
+    } catch (e) {
+        console.warn('No se pudo abrir ayuda:', e);
+    }
+}
+
+function initHelpUI() {
+    const helpEl = document.getElementById('helpModal');
+    if (helpEl && window.bootstrap?.Modal) {
+        helpModalInstance = new bootstrap.Modal(helpEl, { keyboard: true });
+    }
+
+    const ids = ['btn-help', 'btn-help-map', 'btn-help-mobile', 'btn-guide-inline'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            openHelpModal();
+        });
+    });
+
+    // Desde el modal de bienvenida: cerrar y abrir ayuda
+    const openFromWelcome = document.getElementById('open-help-from-welcome');
+    const welcomeEl = document.getElementById('welcomeModal');
+    if (openFromWelcome && welcomeEl && window.bootstrap?.Modal) {
+        openFromWelcome.addEventListener('click', (e) => {
+            e.preventDefault();
+            const inst = bootstrap.Modal.getInstance(welcomeEl) || new bootstrap.Modal(welcomeEl);
+            const onHidden = () => {
+                welcomeEl.removeEventListener('hidden.bs.modal', onHidden);
+                openHelpModal();
+            };
+            welcomeEl.addEventListener('hidden.bs.modal', onHidden);
+            inst.hide();
+        });
+    }
+
+    // Atajo: H
+    document.addEventListener('keydown', (e) => {
+        const key = (e.key || '').toLowerCase();
+        const active = document.activeElement;
+        const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+        if (!isTyping && key === 'h') {
+            openHelpModal();
+        }
+    });
+}
+
 // ============================================================================
 // INICIALIZACIÓN
 // ============================================================================
@@ -927,6 +992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showLoading(true);
         
         // Inicializar UI
+        initHelpUI();
         initModeTabs();
         initFilters();
         initLegend();
@@ -951,11 +1017,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 
+
+// ============================================================================
+// HELP: REABRIR MODAL DE BIENVENIDA (REUTILIZA EL MODAL EXISTENTE)
+// ============================================================================
+
+function openWelcomeModal() {
+    const modalEl = document.getElementById('welcomeModal');
+    if (!modalEl || typeof bootstrap === 'undefined') return;
+
+    // Reutiliza instancia si ya existe
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, {
+        backdrop: 'static',
+        keyboard: true
+    });
+
+    modal.show();
+
+    // 📊 GA4 (opcional): apertura manual de guía
+    if (typeof gtag === 'function') {
+        gtag('event', 'open_welcome_modal', { event_category: 'engagement' });
+    }
+}
+
 // ============================================================================
 // EXPORTAR FUNCIONES GLOBALES PARA USO EN HTML
 // ============================================================================
 
 window.switchTab = switchTab;
+window.openHelp = openWelcomeModal;
+window.openWelcomeModal = openWelcomeModal;
 window.refreshData = refreshData;
 window.closeErrorToast = closeErrorToast;
 window.clearFilters = clearFilters;
