@@ -507,8 +507,12 @@ function applyFilters() {
     }
 
     globalState.filteredZones = filtered;
+
     renderZonesList(filtered);
-    
+
+    renderMapMarkers(filtered);
+
+    // contador
     const countEl = document.getElementById('zones-count');
     if (countEl) {
         const count = filtered.length;
