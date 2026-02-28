@@ -1,0 +1,15 @@
+{
+  "model_file": "model_lstm_v3.3.1_hybrid_20251204T171129Z.keras",
+  "n_test_samples": 1000000,
+  "n_positives": 763,
+  "prevalence": 0.000763,
+  "threshold": 0.10041,
+  "f1_score": 0.009424,
+  "auc_roc": 0.721003,
+  "average_precision": 0.001786,
+  "brier_score": 0.00166988,
+  "precision_pos": 0.005251,
+  "recall_pos": 0.045872,
+  "f1_pos": 0.009424,
+  "confusion_matrix": {
+    "tn": 

@@ -368,17 +368,26 @@ def plot_score_distribution(
     plt.grid(alpha=GRID_ALPHA)
     _save_fig(os.path.join(outdir, filename))
 
-
 # =========================
 # PERSISTENCIA DE MÉTRICAS
 # =========================
+class _NumpyEncoder(json.JSONEncoder):
+    """Convierte tipos NumPy a tipos nativos Python para que json.dump no falle."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
 def save_metrics_json(metrics: dict, outdir: str, filename: str = "metrics.json") -> None:
     """Guarda todas las métricas en JSON para reproducibilidad y tablas en tesis."""
     path = os.path.join(outdir, filename)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=2, ensure_ascii=False)
+        json.dump(metrics, f, indent=2, ensure_ascii=False, cls=_NumpyEncoder)
     print(f"[INFO] Métricas guardadas en: {path}")
-
 
 # =========================
 # MAIN
