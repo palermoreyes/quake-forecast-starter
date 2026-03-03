@@ -35,6 +35,10 @@ class Config:
     # Días hacia atrás para construir el tensor nacional
     lookback_days: int = int(os.getenv("PRED_LOOKBACK_DAYS", "90"))
 
+    # (Opcional) Fecha manual de inicio de predicción en UTC-day, formato DD/MM/YYYY
+    # Ej: PRED_START_DATE="01/01/2026"
+    pred_start_date: str = os.getenv("PRED_START_DATE", "").strip()
+
 
 def get_conn(cfg: Config):
     return psycopg2.connect(
@@ -44,6 +48,26 @@ def get_conn(cfg: Config):
         user=cfg.db_user,
         password=cfg.db_password,
     )
+
+
+# ==========================
+#  UTILIDADES FECHAS (UTC)
+# ==========================
+
+def parse_ddmmyyyy(s: str) -> dt.date:
+    """Parsea 'DD/MM/YYYY' a date."""
+    return dt.datetime.strptime(s, "%d/%m/%Y").date()
+
+
+def sunday_end_of_week_utc(d: dt.date) -> dt.datetime:
+    """
+    Retorna el domingo de la semana de 'd' (semana Lunes..Domingo),
+    con hora 23:59:59 en UTC (naive, pero lo tratamos como UTC).
+    """
+    # weekday(): lunes=0 ... domingo=6
+    days_to_sunday = 6 - d.weekday()
+    sunday = d + dt.timedelta(days=days_to_sunday)
+    return dt.datetime(sunday.year, sunday.month, sunday.day, 23, 59, 59)
 
 
 # ==========================
@@ -137,10 +161,7 @@ def get_active_model(cfg: Config):
 
     path_rel = params.get("model_path")
     if not path_rel:
-        # Fallback: último .keras en la carpeta
-        files = sorted(
-            [f for f in os.listdir(cfg.models_dir) if f.endswith(".keras")]
-        )
+        files = sorted([f for f in os.listdir(cfg.models_dir) if f.endswith(".keras")])
         if files:
             path_rel = files[-1]
         else:
@@ -148,6 +169,41 @@ def get_active_model(cfg: Config):
 
     path = os.path.join(cfg.models_dir, path_rel)
     return row["model_id"], path, row["horizons"], float(row["mag_min"]), params
+
+
+# ==========================
+#  CORTE UTC: producción o manual
+# ==========================
+
+def get_cutoff_utc_and_end_date(cfg: Config, conn):
+    """
+    Retorna:
+      - cutoff_utc (datetime): inicio del día UTC (naive) que actúa como límite superior EXCLUSIVO.
+      - end_date_utc (date): último día incluido en input (cutoff_utc - 1 día).
+      - mode (str): "manual" o "auto"
+    Reglas:
+      - AUTO (producción): cutoff_utc = inicio del día UTC actual (si corres lunes 05:15 UTC -> lunes 00:00 UTC)
+      - MANUAL: cutoff_utc = fecha_inicio_prediccion 00:00 UTC
+    """
+    if cfg.pred_start_date:
+        start_date = parse_ddmmyyyy(cfg.pred_start_date)
+        cutoff_utc = dt.datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0)
+        end_date = start_date - dt.timedelta(days=1)
+        return cutoff_utc, end_date, "manual"
+
+    # AUTO (robusto): obtenemos cutoff desde la BD en UTC, independiente del timezone de sesión/host
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+              (date_trunc('day', now() AT TIME ZONE 'UTC'))::timestamp AS cutoff_utc,
+              ((date_trunc('day', now() AT TIME ZONE 'UTC'))::date - 1) AS end_date_utc
+            """
+        )
+        cutoff_utc, end_date = cur.fetchone()
+
+    # cutoff_utc viene como timestamp (naive) pero representa UTC-day start
+    return cutoff_utc, end_date, "auto"
 
 
 def build_national_tensor(
@@ -160,27 +216,42 @@ def build_national_tensor(
 ):
     """
     Construye el tensor nacional [num_cells, window_days, 2] usando:
-      - el mismo orden de cell_ids que en entrenamiento
-      - las mismas medias/desviaciones de normalización
+      - mismo orden de cell_ids que entrenamiento
+      - mismas medias/desviaciones de normalización
+    Y limita data a:
+      - AUTO: hasta domingo cerrado UTC (excluye lunes UTC)
+      - MANUAL: hasta (fecha_inicio_prediccion - 1 día) cerrado (UTC)
     """
     print("[PRED] Cargando historial reciente...")
 
+    # Importante: usamos cutoff_utc parametrizado (no dependemos de now() dentro del query para backtest)
     query = """
     SELECT 
-        c.cell_id,
-        date_trunc('day', e.event_time_utc)::date AS date,
-        COUNT(e.id) AS count
+      c.cell_id,
+      date_trunc('day', e.event_time_utc)::date AS date,
+      COUNT(e.id) AS count
     FROM public.prediction_cells c
     LEFT JOIN public.events_clean e
-        ON ST_Intersects(c.geom, e.geom)
-       AND e.magnitude >= %s
-       AND e.event_time_utc >= (current_date - interval '%s days')
+      ON ST_Intersects(c.geom, e.geom)
+     AND e.magnitude >= %s
+     AND e.event_time_utc >= (%s::timestamp - (%s * interval '1 day'))
+     AND e.event_time_utc <  %s::timestamp
     GROUP BY c.cell_id, date
     """
 
     with get_conn(cfg) as conn:
+        cutoff_utc, end_date, mode = get_cutoff_utc_and_end_date(cfg, conn)
+
+        print(f"[PRED] mode={mode} | cutoff_utc={cutoff_utc} | end_date_utc={end_date}")
+        if mode == "manual":
+            pred_start_date = parse_ddmmyyyy(cfg.pred_start_date)
+            pred_end_ts = sunday_end_of_week_utc(pred_start_date)
+            print(f"[PRED] pred_start_date (manual)={pred_start_date} | pred_end (domingo semana)={pred_end_ts}")
+
         df = pd.read_sql_query(
-            query, conn, params=(mag_min, cfg.lookback_days)
+            query,
+            conn,
+            params=(mag_min, cutoff_utc, cfg.lookback_days, cutoff_utc),
         )
 
     df["date"] = pd.to_datetime(df["date"])
@@ -190,33 +261,26 @@ def build_national_tensor(
         .astype(np.float32)
     )
 
-    # Producción: último día disponible (ayer)
-    end_date = pd.Timestamp.now().date() - pd.Timedelta(days=0)
-
-    # --- FECHA MANUAL (BACKTESTING - Descomentar para pruebas pasadas) ---
-    #end_date = pd.Timestamp("2025-11-10").date() 
-
-    full_idx = pd.date_range(
-        end=end_date, periods=cfg.lookback_days, freq="D"
-    )
+    # Calendario diario hasta end_date (incluido), en UTC-day
+    full_idx = pd.date_range(end=end_date, periods=cfg.lookback_days, freq="D")
     pivot = pivot.reindex(full_idx, fill_value=0).astype(np.float32)
 
     # Reordenar columnas para que coincidan con entrenamiento
     pivot = pivot.reindex(columns=cell_ids_train, fill_value=0).astype(np.float32)
 
     if pivot.shape[0] < window_days:
-        raise RuntimeError(
-            f"Datos insuficientes: se requieren al menos {window_days} días."
-        )
+        raise RuntimeError(f"Datos insuficientes: se requieren al menos {window_days} días.")
 
     recent_matrix = pivot.iloc[-window_days:].values  # [window_days, num_cells]
-    last_input_date = pivot.index[-1]
+    last_input_date = pivot.index[-1]                 # timestamp diario (naive), representa UTC-day
+    print(f"[PRED] last_input_date (UTC-day) = {last_input_date.date()}")
 
-    # Normalización consistente (dims: [num_cells, window_days])
     feat_counts = recent_matrix.T  # [C, W]
     if norm_means.shape[0] != feat_counts.shape[0]:
         raise RuntimeError("Dimensiones de norm_means no coinciden con num_cells.")
-    feat_norm = (feat_counts - norm_means[:, None]) / norm_stds[:, None]
+
+    safe_stds = np.where(norm_stds == 0, 1.0, norm_stds).astype(np.float32)
+    feat_norm = (feat_counts - norm_means[:, None]) / safe_stds[:, None]
     feat_bin = (feat_counts > 0).astype(np.float32)
 
     X = np.stack([feat_norm, feat_bin], axis=-1).astype(np.float32)
@@ -232,18 +296,11 @@ def main():
     cfg = Config()
 
     try:
-        (
-            model_id,
-            model_path,
-            horizons,
-            mag_min,
-            params,
-        ) = get_active_model(cfg)
+        model_id, model_path, horizons, mag_min, params = get_active_model(cfg)
     except Exception as e:
         print(f"[ERROR] {e}")
         return
 
-    # Parámetros guardados en entrenamiento
     cell_ids_train = params.get("cell_ids")
     norm_means = params.get("norm_means")
     norm_stds = params.get("norm_stds")
@@ -278,19 +335,30 @@ def main():
     probs = model.predict(X, batch_size=2048, verbose=1).flatten()
 
     # Horizonte (asumimos un único horizonte para ahora)
-    last_input_ts = pd.to_datetime(last_input_date).to_pydatetime()
     horizon_days = int(horizons[0])
 
-    pred_start = last_input_ts + dt.timedelta(days=1)
-    pred_end = pred_start + dt.timedelta(days=horizon_days - 1) + dt.timedelta(
-        hours=23, minutes=59, seconds=59
-    )
+    # ==========================
+    #  VENTANA DE PREDICCIÓN
+    # ==========================
+    if cfg.pred_start_date:
+        # MANUAL: pred_start es la fecha indicada; pred_end es domingo de esa semana (UTC)
+        pred_start_date = parse_ddmmyyyy(cfg.pred_start_date)
+        pred_start = dt.datetime(pred_start_date.year, pred_start_date.month, pred_start_date.day, 0, 0, 0)
+        pred_end = sunday_end_of_week_utc(pred_start_date)
+    else:
+        # AUTO: pred_start = día siguiente al último día de input (UTC)
+        last_input_ts = pd.to_datetime(last_input_date).to_pydatetime()
+        pred_start = last_input_ts + dt.timedelta(days=1)
+        pred_end = pred_start + dt.timedelta(days=horizon_days - 1) + dt.timedelta(
+            hours=23, minutes=59, seconds=59
+        )
+
+    print(f"[PRED] Ventana de predicción (UTC): {pred_start} -> {pred_end}")
 
     print("[PRED] Procesando resultados probabilísticos...")
     df_res = pd.DataFrame({"cell_id": cell_ids, "prob": probs})
     df_res["rank_pct"] = df_res["prob"].rank(pct=True)
 
-    # Filtro por probabilidad mínima
     df_filtered = df_res[df_res["prob"] >= cfg.min_prob_alert].copy()
     if df_filtered.empty:
         print(
@@ -305,15 +373,20 @@ def main():
     #  PERSISTENCIA EN BD
     # ========================
     with get_conn(cfg) as conn:
-        # 1. Geometría de las celdas top-K
-        ids_tuple = tuple(int(c) for c in topk["cell_id"].tolist())
+        ids_list = [int(c) for c in topk["cell_id"].tolist()]
+        if not ids_list:
+            print("[PRED] No hay celdas en topk (inesperado). Abortando persistencia.")
+            return
+
+        # Para evitar edge-case de IN %s con 1 elemento (a veces molesta), duplicamos si solo hay 1
+        ids_tuple = tuple(ids_list) if len(ids_list) > 1 else (ids_list[0], ids_list[0])
+
         q_geo = (
             "SELECT cell_id, ST_Y(centroid) AS lat, ST_X(centroid) AS lon "
             "FROM prediction_cells WHERE cell_id IN %s"
         )
         df_geo = pd.read_sql_query(q_geo, conn, params=(ids_tuple,))
 
-        # Reverse geocoding en el mismo orden
         coords = list(zip(df_geo["lat"], df_geo["lon"]))
         results = rg.search(coords)
 
@@ -323,7 +396,6 @@ def main():
             place_map[int(row.cell_id)] = ref_text
 
         with conn.cursor() as cur:
-            # 2. Registrar corrida de predicción
             cur.execute(
                 """
                 INSERT INTO prediction_run
@@ -333,7 +405,7 @@ def main():
                 """,
                 (
                     model_id,
-                    last_input_ts,
+                    pd.to_datetime(last_input_date).to_pydatetime(),
                     list(horizons),
                     mag_min,
                     cfg.topk_k,
@@ -341,7 +413,6 @@ def main():
             )
             run_id = cur.fetchone()[0]
 
-            # 3. Guardar TODAS las probabilidades por celda (grid completo)
             data_probs = [
                 (
                     run_id,
@@ -364,10 +435,10 @@ def main():
                 data_probs,
             )
 
-            # 4. Guardar SOLO top-K (incluyendo cell_id y place)
             for rank_idx, row in enumerate(topk.itertuples(), 1):
                 cell_id = int(row.cell_id)
                 place_txt = place_map.get(cell_id, "Zona remota")
+
                 cur.execute(
                     """
                     INSERT INTO prediction_topk
@@ -386,11 +457,11 @@ def main():
                         rank_idx,
                         pred_start,
                         pred_end,
-                        mag_min + 0.5,      # magnitud estimada (ej: mag_min + 0.5)
+                        mag_min + 0.5,
                         float(row.prob),
                         place_txt,
-                        cell_id,             # valor para columna cell_id
-                        cell_id,             # valor para WHERE cell_id = ...
+                        cell_id,
+                        cell_id,
                     ),
                 )
 
