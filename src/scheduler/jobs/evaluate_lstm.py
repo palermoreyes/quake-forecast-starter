@@ -417,11 +417,14 @@ def main() -> None:
     # 3) Normalización (parámetros sólo de Train → sin data leakage)
     print("[EVAL] Calculando parámetros de normalización (Train)...")
     means, stds = compute_norm_params(df_train)
+    # .values convierte pandas Series → numpy array (requerido por make_sequences_fast)
+    means_np = means.values.astype('float32')
+    stds_np  = stds.values.astype('float32')
 
     # 4) Secuencias de Test
     print("[EVAL] Generando secuencias del conjunto de prueba...")
     X_test, y_test = make_sequences_fast(
-        df_test, cfg, means=means, stds=stds, is_train=False
+        df_test, cfg, means=means_np, stds=stds_np, is_train=False
     )
     print(f"[EVAL] X_test: {X_test.shape} | y_test: {y_test.shape}")
 
@@ -524,5 +527,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-#Marca para validar cambios cargados

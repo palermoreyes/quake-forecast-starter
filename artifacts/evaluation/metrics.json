@@ -1,15 +1,20 @@
 {
   "model_file": "model_lstm_v3.3.1_hybrid_20251204T171129Z.keras",
   "n_test_samples": 1000000,
-  "n_positives": 763,
-  "prevalence": 0.000763,
-  "threshold": 0.10041,
-  "f1_score": 0.009424,
-  "auc_roc": 0.721003,
-  "average_precision": 0.001786,
-  "brier_score": 0.00166988,
-  "precision_pos": 0.005251,
-  "recall_pos": 0.045872,
-  "f1_pos": 0.009424,
+  "n_positives": 850,
+  "prevalence": 0.00085,
+  "threshold": 0.139019,
+  "f1_score": 0.013492,
+  "auc_roc": 0.709226,
+  "average_precision": 0.002151,
+  "brier_score": 0.00177301,
+  "precision_pos": 0.00928,
+  "recall_pos": 0.024706,
+  "f1_pos": 0.013492,
   "confusion_matrix": {
-    "tn": 
+    "tn": 996908,
+    "fp": 2242,
+    "fn": 829,
+    "tp": 21
+  }
+}
