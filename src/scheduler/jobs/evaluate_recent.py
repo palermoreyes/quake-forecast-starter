@@ -11,7 +11,7 @@ from .common import get_engine, log
 # =============================================================================
 # Este script queda productivizado con una sola configuración oficial:
 #   - Top-K = 25
-#   - Tolerancia espacial = 50 km
+#   - Tolerancia espacial = 100 km
 #
 # No se harán barridos aquí. Si luego quieres probar K o tolerancias distintas
 # para análisis de tesis, eso debe ir en otro script separado.
@@ -109,7 +109,7 @@ def table_has_column(conn, table_name: str, column_name: str) -> bool:
 # =============================================================================
 
 def main():
-    log("=== INICIANDO VALIDACIÓN (PRODUCCIÓN: TOP-25, 50km) ===")
+    log("=== INICIANDO VALIDACIÓN (PRODUCCIÓN: TOP-25, 100km) ===")
     engine = get_engine()
 
     with engine.connect() as conn:
@@ -350,7 +350,7 @@ def main():
             })
 
         # ---------------------------------------------------------------------
-        # 5B. MÉTRICAS DE COBERTURA CON TOLERANCIA (50 km)
+        # 5B. MÉTRICAS DE COBERTURA CON TOLERANCIA (100 km)
         # ---------------------------------------------------------------------
         df_official = df_real[df_real["magnitude"] >= UMBRAL_OFICIAL].copy()
         official_events = int(len(df_official))

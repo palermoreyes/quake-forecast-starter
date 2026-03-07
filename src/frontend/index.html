@@ -64,9 +64,11 @@
                     </p>
 
                     <div class="howto-box">
-                        <div class="howto-title">Cómo usarlo:</div>
+                        <div class="howto-title">Cómo leer el mapa:</div>
                         <ul class="howto-ul">
                             <li><strong>Colores:</strong> más intenso = mayor probabilidad estimada.</li>
+                            <li><strong>Círculo pulsante:</strong> rodea cada zona predicha — el radio (~100 km) indica el área de influencia estimada.</li>
+                            <li><strong>Clip<span style="color:#ff6b35">📍</span>:</strong> Sismos recientes >= 4.0 reportados por el IGP durante la semana.</li>
                             <li><strong>Toca una zona:</strong> verás el % y la vigencia (7 días).</li>
                             <li><strong>Lista:</strong> busca tu zona y salta al mapa.</li>
                         </ul>
@@ -86,6 +88,13 @@
                             <div>
                                 <strong>Pronóstico Semanal</strong>
                                 <p>El sistema proyecta la probabilidad de sismos (M4.0+) para los próximos 7 días.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <span class="f-icon" aria-hidden="true">🌋</span>
+                            <div>
+                                <strong>Sismos en tiempo real</strong>
+                                <p>Los sismos confirmados por el IGP durante la ventana activa se muestran como clips en el mapa para comparar con las predicciones.</p>
                             </div>
                         </div>
                     </div>
@@ -174,8 +183,6 @@
             <div class="meta-separator"></div>
             <div class="meta-row">
                 <span class="meta-label">📅 VIGENCIA DEL PRONÓSTICO:</span>
-            </div>
-            <div class="meta-row">
                 <span class="meta-value highlight" id="validity-range" style="font-size: 1.1rem;">
                     Cargando...
                 </span>
@@ -188,7 +195,7 @@
             <div id="recommendation-text"></div>
         </div>
 
-        <!-- Tabs de modo (Ciudadanía / Panel científico) -->
+        <!-- Tabs de modo (Ciudadano / Panel científico) -->
         <div class="mode-tabs" role="tablist" aria-label="Seleccionar modo de visualización">
             <button class="mode-tab active" data-mode="citizen" id="tab-citizen" role="tab" aria-selected="true" aria-controls="citizen-panel">
                 Visión ciudadana
@@ -200,6 +207,7 @@
 
         <!-- PANEL CIUDADANO -->
         <div id="citizen-panel" role="tabpanel" aria-labelledby="tab-citizen">
+
             <div class="list-header" id="topk-header">
                 <span id="zones-count" aria-live="polite">Cargando zonas...</span>
                 <div class="list-actions">
@@ -277,6 +285,7 @@
                 </p>
             </div>
 
+            <div class="sci-section-label">MODELO &amp; PRONÓSTICO</div>
             <div class="sci-grid">
                 <div class="sci-item">
                     <span class="sci-label">Modelo activo:</span>
@@ -314,12 +323,18 @@
                     <span class="sci-label">Rango longitudinal:</span>
                     <span class="sci-value" id="sci-lon-range">--</span>
                 </div>
+                <div class="sci-item">
+                    <span class="sci-label">Tolerancia de Celdas:</span>
+                    <span class="sci-value" id="sci-tolerance">100KM (Radio 5 Celdas)</span>
+                </div>
             </div>
 
-            
             <div class="sci-notes">
                 <p>
                     • Las zonas del mapa muestran la <strong>probabilidad estimada</strong> de un sismo <strong>≥ 4.0</strong> en los próximos <strong>7 días</strong>. Un valor mayor indica mayor señal del modelo.
+                </p>
+                <p>
+                    • El <strong>área pulsante</strong> alrededor de cada zona indica el radio de influencia simbolico estimado (~100 km), coherente con la tolerancia espacial de evaluación.
                 </p>
                 <p>
                     • IA <strong>LSTM</strong> entrenada con datos históricos: úsalo como información referencial (no reemplaza alertas oficiales).

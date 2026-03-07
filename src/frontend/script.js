@@ -20,7 +20,9 @@ const CONFIG = {
         LOW: { min: 0, color: 'transparent', label: 'Bajo' }
     },
     RETRY_ATTEMPTS: 3,
-    RETRY_DELAY: 2000
+    RETRY_DELAY: 2000,
+    // Radio de tolerancia espacial en km (para cobertura de eventos)
+    TOLERANCE_KM: 100
 };
 
 // ============================================================================
@@ -31,9 +33,10 @@ let globalState = {
     allZones: [],
     filteredZones: [],
     mapMarkers: L.layerGroup(),
+    recentEventsLayer: L.layerGroup(),
     lastEventMarker: null,
     isLoading: false,
-    footerExpanded: false
+    footerExpanded: false,
 };
 
 // ============================================================================
@@ -78,6 +81,25 @@ function formatDateShort(isoString) {
     }
 }
 
+function formatUTCDate(dateStr, mode = "full") {
+    const d = new Date(dateStr);
+
+    if (mode === "short") {
+        return d.toLocaleDateString('es-PE', {
+            timeZone: 'UTC',
+            day: 'numeric',
+            month: 'short'
+        });
+    }
+
+    return d.toLocaleDateString('es-PE', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+}
+
 function getColor(prob) {
     for (const [key, level] of Object.entries(CONFIG.RISK_LEVELS)) {
         if (prob >= level.min) return level.color;
@@ -93,11 +115,8 @@ function getRiskLevel(prob) {
 }
 
 function showError(message, duration = 5000) {
-    // 📊 GA4: error del sistema
     if (typeof gtag === 'function') {
-        gtag('event', 'system_error', {
-            error_message: message
-        });
+        gtag('event', 'system_error', { error_message: message });
     }
 
     const toast = document.getElementById('error-toast');
@@ -110,9 +129,7 @@ function showError(message, duration = 5000) {
         toast.setAttribute('aria-live', 'assertive');
         
         if (duration > 0) {
-            setTimeout(() => {
-                toast.style.display = 'none';
-            }, duration);
+            setTimeout(() => { toast.style.display = 'none'; }, duration);
         }
     }
 }
@@ -216,6 +233,8 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19
 }).addTo(map);
 
+// Orden de capas: primero eventos (debajo), luego predicciones (encima)
+globalState.recentEventsLayer.addTo(map);
 globalState.mapMarkers.addTo(map);
 
 const HomeControl = L.Control.extend({
@@ -292,11 +311,8 @@ function initModeTabs() {
 
             const mode = tab.dataset.mode;
 
-            // 📊 GA4: cambio de modo de visualización
             if (typeof gtag === 'function') {
-                gtag('event', 'change_view_mode', {
-                    view_mode: mode
-                });
+                gtag('event', 'change_view_mode', { view_mode: mode });
             }
 
             if (mode === 'scientific') {
@@ -308,7 +324,6 @@ function initModeTabs() {
             }
         });
         
-        // Soporte de teclado
         tab.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -319,7 +334,7 @@ function initModeTabs() {
 }
 
 // ============================================================================
-// RENDERIZADO DE ZONAS
+// RENDERIZADO DE ZONAS (LISTA)
 // ============================================================================
 
 function renderZonesList(zones) {
@@ -402,7 +417,6 @@ function renderZonesList(zones) {
         `;
 
         const handleClick = (e) => {
-            // 📊 GA4: interacción con zona pronosticada
             if (typeof gtag === 'function') {
                 gtag('event', 'zone_click', {
                     probability: item.prob,
@@ -428,6 +442,10 @@ function renderZonesList(zones) {
     });
 }
 
+// ============================================================================
+// RENDERIZADO DE ZONAS EN MAPA — CON CÍRCULO PULSANTE
+// ============================================================================
+
 function renderMapMarkers(zones) {
     globalState.mapMarkers.clearLayers();
 
@@ -437,19 +455,10 @@ function renderMapMarkers(zones) {
         const color = getColor(zone.prob);
         if (color === 'transparent') return;
 
-        const marker = L.circleMarker([zone.lat, zone.lon], {
-            radius: 7,
-            fillColor: color,
-            color: '#000',
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.9
-        });
-
-        const probPct = (zone.prob * 100).toFixed(1);
+        const probPct   = (zone.prob * 100).toFixed(1);
         const safePlace = sanitizeHTML(zone.place || 'Ubicación desconocida');
-        
         const riskLabel = getRiskLevel(zone.prob);
+
         const popup = `
             <div class="popup-dark">
                 <div class="popup-header" style="color:${color}">NIVEL: ${sanitizeHTML(riskLabel)} • ${probPct}%</div>
@@ -458,6 +467,9 @@ function renderMapMarkers(zones) {
                 </div>
                 <div class="popup-row" style="font-size:0.78rem;color:#8b949e;">
                     Indicador del modelo (7 días, sismos ≥ M4.0)
+                </div>
+                <div class="popup-row" style="font-size:0.75rem;color:#8b949e;">
+                    ⭕ Radio de influencia estimado: ~100 km
                 </div>
                 <div style="margin-top:8px;">
                     <a href="https://www.google.com/maps/search/?api=1&query=${zone.lat},${zone.lon}"
@@ -470,9 +482,123 @@ function renderMapMarkers(zones) {
             </div>
         `;
 
-        marker.bindPopup(popup);
-        globalState.mapMarkers.addLayer(marker);
+        // Anillo uniforme para todos los niveles (mismo tamaño)
+        const ringSize = 32;
+        const half = 16;
+
+        // CAPA 1: anillo con relleno pulsante (no intercepta clicks)
+        const ringIcon = L.divIcon({
+            className: '',
+            html: '<div class="zone-pulse-halo" style="' +
+                      'width:' + ringSize + 'px;' +
+                      'height:' + ringSize + 'px;' +
+                      'border:0px solid ' + color + ';' +
+                      'background:' + color + '28;' +
+                      'box-shadow:0 0 6px 1px ' + color + '75;' +
+                  '"></div>',
+            iconSize:   [ringSize, ringSize],
+            iconAnchor: [half, half]
+        });
+
+        const ringMarker = L.marker([zone.lat, zone.lon], {
+            icon: ringIcon,
+            interactive: false,
+            zIndexOffset: -100
+        });
+        globalState.mapMarkers.addLayer(ringMarker);
+
+        // CAPA 2: punto sólido original (circleMarker clickeable con popup)
+        const dot = L.circleMarker([zone.lat, zone.lon], {
+            radius:      4.8,
+            fillColor:   color,
+            color:       '#000',
+            weight:      0,
+            opacity:     1,
+            fillOpacity: 0.9
+        });
+        dot.bindPopup(popup);
+        globalState.mapMarkers.addLayer(dot);
     });
+}
+
+// ============================================================================
+// RENDERIZADO DE SISMOS REALES EN MAPA (solo visual)
+// Requisito: "events" ya debe venir filtrado a:
+//  - dentro de la vigencia (start/end)
+//  - magnitud >= 4.0
+// ============================================================================
+
+function renderRecentEvents(events) {
+  globalState.recentEventsLayer.clearLayers();
+  if (!Array.isArray(events) || events.length === 0) return;
+
+  // El "último" = más reciente por timestamp dentro del propio arreglo
+  // (si el backend ya viene ordenado desc, esto igual funciona)
+  const newest = [...events].sort(
+    (a, b) => new Date(b.event_time_utc) - new Date(a.event_time_utc)
+  )[0];
+  const newestId = newest?.id ?? null;
+
+  const PIN_SIZE = 20; // ✅ mismo tamaño para todos
+
+  events.forEach((event) => {
+    const isNewest = newestId != null && event.id === newestId;
+
+    const mag = Number(event.magnitude).toFixed(1);
+    const safePlace = sanitizeHTML(event.place || "Ubicación desconocida");
+    const safeTime = formatDatePE(event.event_time_utc);
+
+    const pinClass = isNewest
+      ? "quake-pin quake-pin--latest quake-pin--blink"
+      : "quake-pin";
+
+    const icon = L.divIcon({
+      className: "",
+      html:
+        '<div class="' +
+        pinClass +
+        '" style="font-size:' +
+        PIN_SIZE +
+        'px;line-height:1;">📍</div>',
+      iconSize: [PIN_SIZE, PIN_SIZE],
+      iconAnchor: [PIN_SIZE / 2, PIN_SIZE], // punta del pin
+    });
+
+    const popup = `
+      <div class="popup-dark">
+        <div class="popup-header">
+          ${isNewest ? "🔴 ÚLTIMO SISMO (ventana)" : "🌋 SISMO CONFIRMADO"}
+        </div>
+        <div class="popup-row">
+          <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
+        </div>
+        <div class="popup-row">
+          <span class="popup-icon" aria-hidden="true">⚡</span>
+          Mag: <strong>M${mag}</strong>
+        </div>
+        <div class="popup-row">
+          <span class="popup-icon" aria-hidden="true">🕒</span> ${safeTime}
+        </div>
+        ${event.depth_km != null ? `
+          <div class="popup-row">
+            <span class="popup-icon" aria-hidden="true">📉</span>
+            Prof: <strong>${Number(event.depth_km).toFixed(0)} km</strong>
+          </div>` : ""}
+        <div style="margin-top:6px;font-size:0.72rem;color:#8b949e;">
+          Fuente: IGP
+        </div>
+      </div>
+    `;
+
+    const marker = L.marker([event.lat, event.lon], {
+      icon,
+      zIndexOffset: isNewest ? 500 : 0,
+    });
+
+    marker.bindPopup(popup);
+    globalState.recentEventsLayer.addLayer(marker);
+  });
+
 }
 
 // ============================================================================
@@ -507,12 +633,9 @@ function applyFilters() {
     }
 
     globalState.filteredZones = filtered;
-
     renderZonesList(filtered);
-
     renderMapMarkers(filtered);
 
-    // contador
     const countEl = document.getElementById('zones-count');
     if (countEl) {
         const count = filtered.length;
@@ -579,17 +702,15 @@ async function loadForecastData() {
             .filter(zone => zone.prob >= CONFIG.OPERATIVE_THRESHOLD)
             .sort((a, b) => b.prob - a.prob);
 
-        // 👇 nos quedamos SOLO con las top-K zonas
         const topZones = zones.slice(0, CONFIG.MAX_ZONES);
 
         globalState.allZones = topZones;
         globalState.filteredZones = topZones;
 
-        // Mapa y lista trabajan solo con esas 25
         renderMapMarkers(topZones);
         applyFilters();
 
-return topZones;
+        return topZones;
 
     } catch (error) {
         console.error('Error cargando pronóstico:', error);
@@ -640,21 +761,22 @@ async function loadLastEvent() {
             `;
         }
 
+        // Marcador del último sismo (rojo pulsante grande, estilo original)
         if (globalState.lastEventMarker) {
             map.removeLayer(globalState.lastEventMarker);
         }
 
         const lastIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div style="background:rgba(248,81,73,0.3); width:40px; height:40px; border-radius:50%; border:2px solid #f85149; animation:pulse-red 2s infinite;"></div>`,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
+            className: '',
+            html: '<div class="quake-pin quake-pin--last-igp" style="font-size:25px;line-height:1;">📍</div>',
+            iconSize:   [38, 38],
+            iconAnchor: [19, 38]
         });
 
         const safePlace = sanitizeHTML(event.place || 'Ubicación desconocida');
         const popup = `
             <div class="popup-dark">
-                <div class="popup-header" style="color:#f85149">🔴 Último Sismo</div>
+                <div class="popup-header" style="color:#f85149">🔴 Último Sismo IGP</div>
                 <div class="popup-row">
                     <span class="popup-icon" aria-hidden="true">📍</span> ${safePlace}
                 </div>
@@ -664,13 +786,11 @@ async function loadLastEvent() {
                 <div class="popup-row">
                     <span class="popup-icon" aria-hidden="true">🕒</span> ${formatDatePE(event.event_time_utc).split(',')[1] || '--'}
                 </div>
-                <div class="popup-row">
-                    <span class="popup-icon" aria-hidden="true">📉</span> Prof: <strong>${parseFloat(event.depth_km).toFixed(0)} km</strong>
-                </div>
+                ${event.depth_km != null ? `<div class="popup-row"><span class="popup-icon" aria-hidden="true">📉</span> Prof: <strong>${Number(event.depth_km).toFixed(0)} km</strong></div>` : ''}
             </div>
         `;
 
-        globalState.lastEventMarker = L.marker([event.lat, event.lon], { icon: lastIcon })
+        globalState.lastEventMarker = L.marker([event.lat, event.lon], { icon: lastIcon, zIndexOffset: 1000 })
             .addTo(map)
             .bindPopup(popup);
 
@@ -678,6 +798,23 @@ async function loadLastEvent() {
         console.error('Error cargando último evento:', error);
         const cont = document.getElementById('lq-content');
         if (cont) cont.innerHTML = '<span class="lq-loading" style="color:#f85149">Error al cargar</span>';
+    }
+}
+
+// Cargar sismos reales de la ventana de pronóstico (opcional — falla silenciosamente)
+async function loadRecentEvents() {
+    try {
+        const data = await fetchWithRetry('/api/forecast/events-window');
+
+        if (!data || !Array.isArray(data)) return;
+
+        const latestEvent = globalState.lastEventMarker;
+        renderRecentEvents(data);
+        updateScientificPanel();
+
+    } catch (error) {
+        // Este endpoint puede no existir en todas las instalaciones — fallo silencioso
+        console.info('events-window no disponible (opcional):', error.message);
     }
 }
 
@@ -696,18 +833,14 @@ async function loadMetadata() {
 
         if (genDate) genDate.textContent = formatDatePE(data.generated_at);
         if (inputDate) {
-            inputDate.textContent = new Date(data.input_max_time).toLocaleDateString('es-PE', {
-                timeZone: 'America/Lima'
-            });
+            inputDate.textContent = formatUTCDate(data.input_max_time);
         }
 
         if (validityRange && data.topk[0]) {
-            const vStart = new Date(data.topk[0].t_pred_start);
-            const vEnd = new Date(data.topk[0].t_pred_end);
-            validityRange.textContent = 
-                `${formatDateShort(vStart)} al ${formatDateShort(vEnd)}`;
+            validityRange.textContent =
+                `${formatUTCDate(data.topk[0].t_pred_start,"short")} al ${formatUTCDate(data.topk[0].t_pred_end,"short")}`;
         }
-
+        
         if (modelBadge && data.model_version) {
             modelBadge.textContent = data.model_version;
         } else if (modelBadge && modelBadge.textContent === 'Cargando...') {
@@ -754,12 +887,12 @@ function updateRecommendation(maxProb) {
 function updateScientificPanel() {
     const zones = globalState.allZones;
     
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+
     if (!zones || zones.length === 0) {
-        const setText = (id, val) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = val;
-        };
-        
         setText('sci-total', 'Sin datos');
         setText('sci-visible', 'Sin datos');
         setText('sci-maxprob', '--');
@@ -767,6 +900,7 @@ function updateScientificPanel() {
         setText('sci-above', '0 zonas');
         setText('sci-lat-range', '--');
         setText('sci-lon-range', '--');
+        setText('sci-tolerance', `${CONFIG.TOLERANCE_KM} km (Radio ~5 celdas)`);
         return;
     }
 
@@ -778,11 +912,6 @@ function updateScientificPanel() {
     const avgProb = probs.reduce((a, b) => a + b, 0) / probs.length;
     const countAbove = probs.filter(p => p >= CONFIG.OPERATIVE_THRESHOLD).length;
     const pctAbove = (countAbove / probs.length) * 100;
-
-    const setText = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val;
-    };
 
     const modelBadge = document.getElementById('model-badge');
     const modelName = modelBadge ? modelBadge.textContent : 'LSTM v3.3.1';
@@ -801,6 +930,9 @@ function updateScientificPanel() {
 
     setText('sci-lat-range', `${minLat}° a ${maxLat}°`);
     setText('sci-lon-range', `${minLon}° a ${maxLon}°`);
+    setText('sci-tolerance', `${CONFIG.TOLERANCE_KM} km (Radio ~5 celdas)`);
+
+    // (Validación en ventana activa se almacena en BD al cerrar el pronóstico — no se muestra en vivo)
 }
 
 // ============================================================================
@@ -822,7 +954,7 @@ function initLegend() {
             { label: 'Moderado (5–12%)', color: CONFIG.RISK_LEVELS.MODERATE.color }
         ];
 
-        let html = '<h6>Nivel de riesgo</h6>';
+        let html = '<h6>NIVEL DE RIESGO</h6>';
         grades.forEach(i => {
             html += `
                 <div class="legend-item">
@@ -831,12 +963,19 @@ function initLegend() {
                 </div>
             `;
         });
+
         html += `
+            <div class="legend-divider"></div>
+            <div class="legend-item">
+            <span style="display:inline-block;width:10px;margin-right:8px;font-size:10px;text-align:center;line-height:1;" aria-hidden="true">📍</span>
+            <span>Sismos >= 4.0 en la semana</span>
+            </div>
             <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
                 Indicador comparativo (sismos ≥ M4.0)
                 <br>Ventana: 7 días
             </div>
         `;
+
         div.innerHTML = html;
         return div;
     };
@@ -858,17 +997,15 @@ async function refreshData() {
 
     showLoading(true);
 
-    // 📊 GA4: refresh manual del pronóstico
     if (typeof gtag === 'function') {
-        gtag('event', 'refresh_forecast', {
-            event_category: 'interaction'
-        });
+        gtag('event', 'refresh_forecast', { event_category: 'interaction' });
     }
 
     try {
         await loadForecastData();
         await loadLastEvent();
         await loadMetadata();
+        await loadRecentEvents();
         
         showLoading(false);
         showSuccess('✓ Datos actualizados correctamente');
@@ -895,8 +1032,6 @@ window.addEventListener('resize', () => {
         map.invalidateSize();
     }, 150);
 });
-
-
 
 // ============================================================================
 // AYUDA (UI PROGRESIVA)
@@ -933,7 +1068,6 @@ function initHelpUI() {
         });
     });
 
-    // Desde el modal de bienvenida: cerrar y abrir ayuda
     const openFromWelcome = document.getElementById('open-help-from-welcome');
     const welcomeEl = document.getElementById('welcomeModal');
     if (openFromWelcome && welcomeEl && window.bootstrap?.Modal) {
@@ -949,7 +1083,6 @@ function initHelpUI() {
         });
     }
 
-    // Atajo: H
     document.addEventListener('keydown', (e) => {
         const key = (e.key || '').toLowerCase();
         const active = document.activeElement;
@@ -966,7 +1099,6 @@ function initHelpUI() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        // Mostrar modal de bienvenida solo la primera vez
         const welcomeSeen = localStorage.getItem('quakeForecastWelcomeSeen');
         
         if (!welcomeSeen) {
@@ -978,11 +1110,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
                 welcomeModal.show();
                 
-                // Guardar en localStorage cuando se cierre
                 modalEl.addEventListener('hidden.bs.modal', function () {
                     localStorage.setItem('quakeForecastWelcomeSeen', 'true');
 
-                    // 📊 GA4: aceptación de aviso académico
                     if (typeof gtag === 'function') {
                         gtag('event', 'accept_disclaimer', {
                             event_category: 'engagement',
@@ -995,20 +1125,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         showLoading(true);
         
-        // Inicializar UI
         initHelpUI();
         initModeTabs();
         initFilters();
         initLegend();
         
-        // Cargar datos EN ORDEN
         await loadForecastData();
         await loadLastEvent();
         await loadMetadata();
+        await loadRecentEvents();   // opcional — falla silenciosamente
         
         showLoading(false);
         
-        // Estado inicial en móvil - mostrar lista primero
         if (window.innerWidth < 768) {
             switchTab('list');
         }
@@ -1020,17 +1148,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-
-
 // ============================================================================
-// HELP: REABRIR MODAL DE BIENVENIDA (REUTILIZA EL MODAL EXISTENTE)
+// HELP: REABRIR MODAL DE BIENVENIDA
 // ============================================================================
 
 function openWelcomeModal() {
     const modalEl = document.getElementById('welcomeModal');
     if (!modalEl || typeof bootstrap === 'undefined') return;
 
-    // Reutiliza instancia si ya existe
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl, {
         backdrop: 'static',
         keyboard: true
@@ -1038,14 +1163,13 @@ function openWelcomeModal() {
 
     modal.show();
 
-    // 📊 GA4 (opcional): apertura manual de guía
     if (typeof gtag === 'function') {
         gtag('event', 'open_welcome_modal', { event_category: 'engagement' });
     }
 }
 
 // ============================================================================
-// EXPORTAR FUNCIONES GLOBALES PARA USO EN HTML
+// EXPORTAR FUNCIONES GLOBALES
 // ============================================================================
 
 window.switchTab = switchTab;
