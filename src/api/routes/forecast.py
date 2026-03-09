@@ -1,9 +1,10 @@
 # src/api/routes/forecast.py
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from database import get_db 
+from database import get_db
+from datetime import datetime
 
 router = APIRouter(
     prefix="/forecast",
@@ -46,7 +47,8 @@ async def get_model_status(db: AsyncSession = Depends(get_db)):
         query = text("SELECT MAX(run_id) as last_run, MAX(generated_at) as run_date FROM prediction_run;")
         result = await db.execute(query)
         row = result.first()
-        if not row or row[0] is None: return {"status": "Sin datos", "last_run": None}
+        if not row or row[0] is None:
+            return {"status": "Sin datos", "last_run": None}
         return {"status": "Operativo", "last_run_id": row[0], "last_run_date": row[1]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -58,9 +60,10 @@ async def get_forecast_topk(horizon_days: int = 7, limit: int = 10, db: AsyncSes
         q_run = text("SELECT run_id, generated_at, input_max_time, horizons, mag_min FROM prediction_run ORDER BY run_id DESC LIMIT 1;")
         res_run = await db.execute(q_run)
         row_run = res_run.first()
-        
-        if not row_run: raise HTTPException(status_code=404, detail="No data")
-        
+
+        if not row_run:
+            raise HTTPException(status_code=404, detail="No data")
+
         run_id, gen_at, in_max, horizons, mag_min = row_run
 
         # 2. Datos del Top-K (INCLUYENDO 'place')
@@ -70,9 +73,9 @@ async def get_forecast_topk(horizon_days: int = 7, limit: int = 10, db: AsyncSes
             WHERE run_id = :rid AND horizon_days = :hz 
             ORDER BY rank LIMIT :lim
         """)
-        
+
         res_top = await db.execute(q_top, {"rid": run_id, "hz": horizon_days, "lim": limit})
-        
+
         topk_list = []
         for r in res_top.fetchall():
             topk_list.append({
@@ -81,7 +84,7 @@ async def get_forecast_topk(horizon_days: int = 7, limit: int = 10, db: AsyncSes
                 "lon": float(r.lon),
                 "mag_pred": float(r.mag_pred) if r.mag_pred else float(mag_min),
                 "prob": float(r.prob),
-                "place": r.place if r.place else "Zona Remota", # <--- NUEVO CAMPO
+                "place": r.place if r.place else "Zona Remota",
                 "t_pred_start": r.t_pred_start,
                 "t_pred_end": r.t_pred_end,
                 "time_conf_h": int(r.time_conf_h) if r.time_conf_h is not None else 0,
@@ -93,7 +96,8 @@ async def get_forecast_topk(horizon_days: int = 7, limit: int = 10, db: AsyncSes
             "input_max_time": in_max,
             "topk": topk_list
         }
-    except HTTPException: raise
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -109,15 +113,64 @@ async def get_last_real_event(db: AsyncSession = Depends(get_db)):
         """)
         res = await db.execute(q)
         row = res.first()
-        
-        if not row: return None
-        
+
+        if not row:
+            return None
+
         return {
             "event_time_utc": row.event_time_utc,
-            "lat": row.lat, "lon": row.lon,
-            "depth_km": row.depth_km, "magnitude": row.magnitude,
+            "lat": row.lat,
+            "lon": row.lon,
+            "depth_km": row.depth_km,
+            "magnitude": row.magnitude,
             "place": row.place if row.place else "Ubicación no especificada"
         }
     except Exception as e:
         print(f"Error last-event: {e}")
+        raise HTTPException(status_code=500, detail="Error interno")
+
+# --- NUEVO ENDPOINT: SISMOS EN VENTANA (para el dashboard) ---
+@router.get("/events-window", summary="Sismos reales (Mw>=4.0) dentro de un rango [start, end)")
+async def get_events_in_window(
+    start: datetime = Query(..., description="Inicio (ISO). Ej: 2026-02-01T00:00:00Z"),
+    end: datetime = Query(..., description="Fin (ISO, exclusivo). Ej: 2026-02-08T00:00:00Z"),
+    min_mag: float = Query(4.0, description="Magnitud mínima"),
+    limit: int = Query(500, ge=1, le=5000, description="Límite de eventos devueltos"),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        if end <= start:
+            raise HTTPException(status_code=400, detail="Parámetros inválidos: end debe ser mayor que start")
+
+        q = text("""
+            SELECT id, event_time_utc, lat, lon, depth_km, magnitude, place
+            FROM events_clean
+            WHERE event_time_utc >= :start
+              AND event_time_utc <  :end
+              AND magnitude >= :min_mag
+              AND event_time_utc <> (SELECT max(event_time_utc) FROM events_clean)
+            ORDER BY event_time_utc DESC
+            LIMIT :lim;
+        """)
+
+        res = await db.execute(q, {"start": start, "end": end, "min_mag": min_mag, "lim": limit})
+        rows = res.fetchall()
+
+        return [
+            {
+                "id": r.id,
+                "event_time_utc": r.event_time_utc,
+                "lat": float(r.lat),
+                "lon": float(r.lon),
+                "depth_km": float(r.depth_km) if r.depth_km is not None else None,
+                "magnitude": float(r.magnitude),
+                "place": r.place if r.place else "Ubicación no especificada",
+            }
+            for r in rows
+        ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error events-window: {e}")
         raise HTTPException(status_code=500, detail="Error interno")

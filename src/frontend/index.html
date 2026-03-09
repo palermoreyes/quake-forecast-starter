@@ -14,8 +14,9 @@
     </script>
 
     <!-- Favicons -->
-    <link rel="icon" type="image/png" href="../images/favicon.png">
-    <link rel="apple-touch-icon" href="../images/favicon.png">
+    <link rel="icon" type="image/png" href="images/favicon.png">
+    <link rel="apple-touch-icon" href="images/favicon.png">
+    <link rel="manifest" href="manifest.webmanifest">
     
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -77,36 +78,43 @@
                     
                     <div class="feature-list">
                         <div class="feature-item">
-                            <span class="f-icon" aria-hidden="true">🧠</span>
+                            <span class="f-icon" aria-hidden="true">&#129504;</span>
                             <div>
                                 <strong>Inteligencia Artificial</strong>
-                                <p>Aprende patrones del historial sísmico con una red LSTM y genera un porcentaje estimado por zona (ventana de 7 días).</p>
+                                <p>Aprende patrones del historial sismico con una red LSTM y genera un porcentaje estimado por zona (ventana de 7 dias).</p>
                             </div>
                         </div>
                         <div class="feature-item">
-                            <span class="f-icon" aria-hidden="true">📅</span>
+                            <span class="f-icon" aria-hidden="true">&#128467;</span>
                             <div>
-                                <strong>Pronóstico Semanal</strong>
-                                <p>El sistema proyecta la probabilidad de sismos (M4.0+) para los próximos 7 días.</p>
+                                <strong>Pronostico Semanal</strong>
+                                <p>El sistema proyecta la probabilidad de sismos (M4.0+) para los proximos 7 dias.</p>
                             </div>
                         </div>
                         <div class="feature-item">
-                            <span class="f-icon" aria-hidden="true">🌋</span>
+                            <span class="f-icon" aria-hidden="true">&#127755;</span>
                             <div>
                                 <strong>Sismos en tiempo real</strong>
                                 <p>Los sismos confirmados por el IGP durante la ventana activa se muestran como clips en el mapa para comparar con las predicciones.</p>
                             </div>
                         </div>
+                        <div class="feature-item">
+                            <span class="f-icon" aria-hidden="true">&#128241;</span>
+                            <div>
+                                <strong>Instalar como App</strong>
+                                <p>Puedes instalar Quake Forecast AI en tu telefono o PC para abrirla como aplicacion y acceder rapido desde el inicio o escritorio.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="alert alert-warning d-flex align-items-start mt-3" role="alert">
-                        <div style="font-size: 1.5rem; margin-right: 12px;" aria-hidden="true">⚠️</div>
+                        <div style="font-size: 1.5rem; margin-right: 12px;" aria-hidden="true">&#9888;&#65039;</div>
                         <div>
                             <strong>Aviso Importante:</strong>
                             <div style="font-size: 0.9rem; line-height: 1.4; margin-top: 4px;">
-                                Este es un proyecto de <strong>investigación académica</strong> (Tesis Universitaria - UPN). 
-                                <strong>No reemplaza las alertas oficiales del IGP o INDECI.</strong> 
-                                Úsalo con fines informativos y educativos.
+                                Este es un proyecto de <strong>investigacion academica</strong> (Tesis Universitaria - UPN).
+                                <strong>No reemplaza las alertas oficiales del IGP o INDECI.</strong>
+                                Usalo con fines informativos y educativos.
                             </div>
                         </div>
                     </div>
@@ -114,6 +122,10 @@
                 <div class="modal-footer border-0 justify-content-center">
                     <button type="button" class="btn btn-primary w-100 py-2 fw-bold" data-bs-dismiss="modal" id="btn-start">
                         ENTENDIDO, VER MAPA 🌎
+                    </button>
+                    <button type="button" class="btn btn-outline-info w-100 mt-2 install-welcome-btn" id="btn-install-welcome">
+                        <span class="install-icon" aria-hidden="true">&#11015;&#65039;</span>
+                        Instalar app
                     </button>
                 </div>
             </div>
@@ -211,13 +223,16 @@
             <div class="list-header" id="topk-header">
                 <span id="zones-count" aria-live="polite">Cargando zonas...</span>
                 <div class="list-actions">
-                <button id="refresh-btn" class="refresh-btn" onclick="refreshData()" aria-label="Actualizar datos del pronóstico" title="Actualizar datos" aria-busy="false">
-                    🔄
-                </button>
-                <button id="help-btn" class="help-btn" onclick="openWelcomeModal()" aria-label="Abrir guía inicial" title="¿Cómo funciona?" type="button">
-                    ❓
-                </button>
-            </div>
+                    <button id="refresh-btn" class="refresh-btn" onclick="refreshData()" aria-label="Actualizar pronostico" title="Actualizar datos" aria-busy="false">
+                        &#x1F504;
+                    </button>
+                    <button id="help-btn" class="help-btn" onclick="openWelcomeModal()" aria-label="Abrir guia inicial" title="Como funciona" type="button">
+                        &#10067;
+                    </button>
+                    <button id="install-btn" class="help-btn hidden" aria-label="Instalar aplicacion" title="Instalar aplicacion" type="button">
+                        &#11015;&#65039;
+                    </button>
+                </div>
                 <span class="meta-label meta-guide">
                     Las zonas del mapa muestran la probabilidad estimada de que ocurra un sismo de magnitud ≥ 4.0 en los próximos 7 días. Toca una zona para ver el detalle.
                 </span>
@@ -363,6 +378,10 @@
             <span>Guía</span>
         </button>
 </nav>
+    <div id="forecast-update-banner" class="forecast-update-banner hidden" role="status" aria-live="polite">
+        <div class="forecast-update-text">Hay un nuevo pronóstico disponible.</div>
+        <button id="forecast-update-refresh" class="forecast-update-refresh" type="button">Actualizar ahora</button>
+    </div>
 
     <!-- JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

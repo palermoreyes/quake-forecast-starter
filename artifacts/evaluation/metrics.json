@@ -1,20 +1,20 @@
 {
-  "model_file": "model_lstm_v3.3.1_hybrid_20251204T171129Z.keras",
-  "n_test_samples": 1000000,
-  "n_positives": 850,
-  "prevalence": 0.00085,
-  "threshold": 0.139019,
-  "f1_score": 0.013492,
-  "auc_roc": 0.709226,
-  "average_precision": 0.002151,
-  "brier_score": 0.00177301,
-  "precision_pos": 0.00928,
-  "recall_pos": 0.024706,
-  "f1_pos": 0.013492,
+  "model_file": "model_lstm_v3.3.2_r3_20260308T121715Z.keras",
+  "n_test_samples": 40998,
+  "n_positives": 885,
+  "prevalence": 0.02158642,
+  "threshold": 0.262999,
+  "f1_score": 0.04307,
+  "auc_roc": 0.496452,
+  "average_precision": 0.020811,
+  "brier_score": 0.27307439,
+  "precision_pos": 0.022009,
+  "recall_pos": 1.0,
+  "f1_pos": 0.04307,
   "confusion_matrix": {
-    "tn": 996908,
-    "fp": 2242,
-    "fn": 829,
-    "tp": 21
+    "tn": 787,
+    "fp": 39326,
+    "fn": 0,
+    "tp": 885
   }
 }

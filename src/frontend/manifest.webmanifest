@@ -1,0 +1,25 @@
+{
+  "name": "Quake Forecast AI",
+  "short_name": "QuakeAI",
+  "description": "Pronostico sismico experimental para Peru.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f111a",
+  "theme_color": "#020617",
+  "lang": "es-PE",
+  "icons": [
+    {
+      "src": "images/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "images/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -21,8 +21,8 @@ const CONFIG = {
     },
     RETRY_ATTEMPTS: 3,
     RETRY_DELAY: 2000,
-    // Radio de tolerancia espacial en km (para cobertura de eventos)
-    TOLERANCE_KM: 100
+    TOLERANCE_KM: 100,
+    FORECAST_POLL_MS: 120000
 };
 
 // ============================================================================
@@ -34,9 +34,17 @@ let globalState = {
     filteredZones: [],
     mapMarkers: L.layerGroup(),
     recentEventsLayer: L.layerGroup(),
+    recentEventsAll: [],
     lastEventMarker: null,
     isLoading: false,
     footerExpanded: false,
+    latestGeneratedAt: null,
+    lastNotifiedGeneratedAt: null,
+    deferredInstallPrompt: null,
+    forecastPollTimer: null,
+    // ← NUEVO: Guardar fechas de predicción
+    t_pred_start: null,
+    t_pred_end: null,
 };
 
 // ============================================================================
@@ -185,10 +193,146 @@ async function fetchWithRetry(url, options = {}, retries = CONFIG.RETRY_ATTEMPTS
             return await response.json();
         } catch (error) {
             if (i === retries - 1) throw error;
-            console.warn(`Reintento ${i + 1}/${retries} para ${url}`);
+            
             await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
         }
     }
+}
+
+async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        await navigator.serviceWorker.register('/sw.js');
+    } catch (error) {
+        console.error('No se pudo registrar service worker:', error);
+    }
+}
+
+function initPWAInstall() {
+    const installBtn = document.getElementById('install-btn');
+    const installWelcomeBtn = document.getElementById('btn-install-welcome');
+    if (!installBtn) return;
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        globalState.deferredInstallPrompt = event;
+        installBtn.classList.remove('hidden');
+        if (installWelcomeBtn) installWelcomeBtn.classList.remove('hidden');
+    });
+
+    window.addEventListener('appinstalled', () => {
+        globalState.deferredInstallPrompt = null;
+        installBtn.classList.add('hidden');
+        if (installWelcomeBtn) installWelcomeBtn.classList.add('hidden');
+        showSuccess('Aplicacion instalada');
+    });
+
+    installBtn.addEventListener('click', openInstallPrompt);
+
+    if (installWelcomeBtn) {
+        installWelcomeBtn.addEventListener('click', async () => {
+            await openInstallPrompt();
+        });
+    }
+}
+
+async function openInstallPrompt() {
+    if (!globalState.deferredInstallPrompt) {
+        showError('Instalacion no disponible en este navegador', 4000);
+        return;
+    }
+    try {
+        globalState.deferredInstallPrompt.prompt();
+        await globalState.deferredInstallPrompt.userChoice;
+    } catch (error) {
+        console.error('Error al abrir instalacion PWA:', error);
+    } finally {
+        globalState.deferredInstallPrompt = null;
+        const installBtn = document.getElementById('install-btn');
+        if (installBtn) installBtn.classList.add('hidden');
+    }
+}
+
+function playUpdateTone() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        const audioCtx = new AudioCtx();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.03, audioCtx.currentTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.25);
+    } catch (error) {
+        // Ignorar: algunos navegadores bloquean audio sin interaccion previa.
+    }
+}
+
+function showForecastUpdateBanner() {
+    const banner = document.getElementById('forecast-update-banner');
+    const refreshBtn = document.getElementById('forecast-update-refresh');
+    if (!banner || !refreshBtn) return;
+
+    banner.classList.remove('hidden');
+
+    if (!refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = '1';
+        refreshBtn.addEventListener('click', async () => {
+            await refreshData();
+            banner.classList.add('hidden');
+        });
+    }
+}
+
+function hideForecastUpdateBanner() {
+    const banner = document.getElementById('forecast-update-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+function isNewForecast(generatedAt) {
+    if (!generatedAt || !globalState.latestGeneratedAt) return false;
+    const incoming = new Date(generatedAt).getTime();
+    const current = new Date(globalState.latestGeneratedAt).getTime();
+    return Number.isFinite(incoming) && Number.isFinite(current) && incoming > current;
+}
+
+async function checkForForecastUpdates() {
+    try {
+        const data = await fetchWithRetry('/api/forecast/topk', {}, 1);
+        const generatedAt = data?.generated_at;
+        if (!generatedAt) return;
+
+        if (!globalState.latestGeneratedAt) {
+            globalState.latestGeneratedAt = generatedAt;
+            return;
+        }
+
+        if (!isNewForecast(generatedAt)) return;
+        if (globalState.lastNotifiedGeneratedAt === generatedAt) return;
+
+        globalState.lastNotifiedGeneratedAt = generatedAt;
+        showForecastUpdateBanner();
+        playUpdateTone();
+    } catch (error) {
+        // Falla silenciosa del watcher para no interrumpir UX.
+    }
+}
+
+function startForecastWatcher() {
+    if (globalState.forecastPollTimer) {
+        clearInterval(globalState.forecastPollTimer);
+    }
+    globalState.forecastPollTimer = setInterval(checkForForecastUpdates, CONFIG.FORECAST_POLL_MS);
+    checkForForecastUpdates();
 }
 
 // ============================================================================
@@ -482,86 +626,66 @@ function renderMapMarkers(zones) {
             </div>
         `;
 
-        // Anillo uniforme para todos los niveles (mismo tamaño)
-        const ringSize = 32;
-        const half = 16;
-
-        // CAPA 1: anillo con relleno pulsante (no intercepta clicks)
-        const ringIcon = L.divIcon({
+        // Crear marcador con 2 capas:
+        // - núcleo fijo (quake-dot)
+        // - halo radial animado (quake-halo)
+        const dotIcon = L.divIcon({
             className: '',
-            html: '<div class="zone-pulse-halo" style="' +
-                      'width:' + ringSize + 'px;' +
-                      'height:' + ringSize + 'px;' +
-                      'border:0px solid ' + color + ';' +
-                      'background:' + color + '28;' +
-                      'box-shadow:0 0 6px 1px ' + color + '75;' +
-                  '"></div>',
-            iconSize:   [ringSize, ringSize],
-            iconAnchor: [half, half]
+            html:
+                '<div class="quake-marker" style="color:' + color + ';">' +
+                    '<div class="quake-halo quake-halo--blink"></div>' +
+                    '<div class="quake-dot" style="background:' + color + ';"></div>' +
+                '</div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
         });
 
-        const ringMarker = L.marker([zone.lat, zone.lon], {
-            icon: ringIcon,
-            interactive: false,
-            zIndexOffset: -100
+        const dotMarker = L.marker([zone.lat, zone.lon], {
+            icon: dotIcon,
+            zIndexOffset: 100
         });
-        globalState.mapMarkers.addLayer(ringMarker);
-
-        // CAPA 2: punto sólido original (circleMarker clickeable con popup)
-        const dot = L.circleMarker([zone.lat, zone.lon], {
-            radius:      4.8,
-            fillColor:   color,
-            color:       '#000',
-            weight:      0,
-            opacity:     1,
-            fillOpacity: 0.9
-        });
-        dot.bindPopup(popup);
-        globalState.mapMarkers.addLayer(dot);
+        dotMarker.bindPopup(popup);
+        globalState.mapMarkers.addLayer(dotMarker);
     });
 }
 
 // ============================================================================
-// RENDERIZADO DE SISMOS REALES EN MAPA (solo visual)
-// Requisito: "events" ya debe venir filtrado a:
-//  - dentro de la vigencia (start/end)
-//  - magnitud >= 4.0
+// RENDERIZADO DE SISMOS REALES EN MAPA (MEJORADO)
 // ============================================================================
 
 function renderRecentEvents(events) {
   globalState.recentEventsLayer.clearLayers();
-  if (!Array.isArray(events) || events.length === 0) return;
+  
+  if (!Array.isArray(events) || events.length === 0) {
+    
+    return;
+  }
 
-  // El "último" = más reciente por timestamp dentro del propio arreglo
-  // (si el backend ya viene ordenado desc, esto igual funciona)
+  
+
   const newest = [...events].sort(
     (a, b) => new Date(b.event_time_utc) - new Date(a.event_time_utc)
   )[0];
   const newestId = newest?.id ?? null;
 
-  const PIN_SIZE = 20; // ✅ mismo tamaño para todos
+  const PIN_SIZE = 20;
 
-  events.forEach((event) => {
+  events.forEach((event, index) => {
     const isNewest = newestId != null && event.id === newestId;
 
     const mag = Number(event.magnitude).toFixed(1);
     const safePlace = sanitizeHTML(event.place || "Ubicación desconocida");
     const safeTime = formatDatePE(event.event_time_utc);
 
-    const pinClass = isNewest
-      ? "quake-pin quake-pin--latest quake-pin--blink"
-      : "quake-pin";
-
     const icon = L.divIcon({
       className: "",
       html:
-        '<div class="' +
-        pinClass +
-        '" style="font-size:' +
+        '<div style="font-size:' +
         PIN_SIZE +
-        'px;line-height:1;">📍</div>',
+        'px;line-height:1;">' +
+        '📍</div>',
       iconSize: [PIN_SIZE, PIN_SIZE],
-      iconAnchor: [PIN_SIZE / 2, PIN_SIZE], // punta del pin
+      iconAnchor: [PIN_SIZE / 2, PIN_SIZE],
     });
 
     const popup = `
@@ -597,8 +721,62 @@ function renderRecentEvents(events) {
 
     marker.bindPopup(popup);
     globalState.recentEventsLayer.addLayer(marker);
+    
+    
   });
 
+  
+}
+
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function syncRecentEventsWithFilters(searchTerm = '', riskFilter = 'all') {
+    const events = Array.isArray(globalState.recentEventsAll) ? globalState.recentEventsAll : [];
+    if (events.length === 0) {
+        renderRecentEvents([]);
+        return;
+    }
+
+    const zones = Array.isArray(globalState.filteredZones) ? globalState.filteredZones : [];
+    const normalizedSearch = (searchTerm || '').toLowerCase().trim();
+    const hasSearch = normalizedSearch.length > 0;
+    const hasRiskFilter = riskFilter !== 'all';
+    const hasActiveFilter = hasSearch || hasRiskFilter;
+
+    if (!hasActiveFilter) {
+        renderRecentEvents(events);
+        return;
+    }
+
+    const filtered = events.filter(event => {
+        const nearFilteredZone = zones.some(zone =>
+            distanceKm(event.lat, event.lon, zone.lat, zone.lon) <= CONFIG.TOLERANCE_KM
+        );
+
+        if (!hasSearch) return nearFilteredZone;
+
+        const place = (event.place || '').toLowerCase();
+        const coords = `${Number(event.lat).toFixed(2)},${Number(event.lon).toFixed(2)}`;
+        const matchesSearch = place.includes(normalizedSearch) || coords.includes(normalizedSearch);
+
+        return nearFilteredZone || matchesSearch;
+    });
+
+    renderRecentEvents(filtered);
 }
 
 // ============================================================================
@@ -635,6 +813,7 @@ function applyFilters() {
     globalState.filteredZones = filtered;
     renderZonesList(filtered);
     renderMapMarkers(filtered);
+    syncRecentEventsWithFilters(searchTerm, riskFilter);
 
     const countEl = document.getElementById('zones-count');
     if (countEl) {
@@ -761,17 +940,14 @@ async function loadLastEvent() {
             `;
         }
 
-        // Marcador del último sismo (rojo pulsante grande, estilo original)
-        if (globalState.lastEventMarker) {
-            map.removeLayer(globalState.lastEventMarker);
-        }
+        if (globalState.lastEventMarker) map.removeLayer(globalState.lastEventMarker);
 
         const lastIcon = L.divIcon({
-            className: '',
-            html: '<div class="quake-pin quake-pin--last-igp" style="font-size:25px;line-height:1;">📍</div>',
-            iconSize:   [38, 38],
-            iconAnchor: [19, 38]
-        });
+                className: 'last-event-icon',
+                html: '<div class="last-event-star">&#9733;</div>',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
 
         const safePlace = sanitizeHTML(event.place || 'Ubicación desconocida');
         const popup = `
@@ -801,29 +977,26 @@ async function loadLastEvent() {
     }
 }
 
-// Cargar sismos reales de la ventana de pronóstico (opcional — falla silenciosamente)
-async function loadRecentEvents() {
-    try {
-        const data = await fetchWithRetry('/api/forecast/events-window');
-
-        if (!data || !Array.isArray(data)) return;
-
-        const latestEvent = globalState.lastEventMarker;
-        renderRecentEvents(data);
-        updateScientificPanel();
-
-    } catch (error) {
-        // Este endpoint puede no existir en todas las instalaciones — fallo silencioso
-        console.info('events-window no disponible (opcional):', error.message);
-    }
-}
+// ============================================================================
+// CARGA DE METADATOS - GUARDA LAS FECHAS EN globalState
+// ============================================================================
 
 async function loadMetadata() {
     try {
+        
         const data = await fetchWithRetry('/api/forecast/topk');
         
         if (!data || !data.topk || !data.topk.length) {
             throw new Error('No hay datos de metadatos disponibles');
+        }
+
+        // ← NUEVO: Guardar fechas de predicción en globalState
+        if (data.topk[0]) {
+            globalState.t_pred_start = data.topk[0].t_pred_start;
+            globalState.t_pred_end = data.topk[0].t_pred_end;
+            
+            
+            
         }
 
         const genDate = document.getElementById('generated-date');
@@ -832,6 +1005,12 @@ async function loadMetadata() {
         const modelBadge = document.getElementById('model-badge');
 
         if (genDate) genDate.textContent = formatDatePE(data.generated_at);
+        if (data.generated_at) {
+            globalState.latestGeneratedAt = data.generated_at;
+            if (globalState.lastNotifiedGeneratedAt === data.generated_at) {
+                hideForecastUpdateBanner();
+            }
+        }
         if (inputDate) {
             inputDate.textContent = formatUTCDate(data.input_max_time);
         }
@@ -859,6 +1038,95 @@ async function loadMetadata() {
         showError('Error al cargar metadatos del sistema');
     }
 }
+
+// ============================================================================
+// CARGA DE SISMOS REALES EN VENTANA (CORREGIDO)
+// ============================================================================
+
+async function loadRecentEvents() {
+    try {
+        
+        
+        // ← NUEVO: Usar las fechas guardadas en globalState
+        if (!globalState.t_pred_start || !globalState.t_pred_end) {
+            
+            
+            return;
+        }
+
+        // Construir URL con parámetros requeridos
+        const startParam = encodeURIComponent(globalState.t_pred_start);
+        const endParam = encodeURIComponent(globalState.t_pred_end);
+        const url = `/api/forecast/events-window?start=${startParam}&end=${endParam}&min_mag=4.0`;
+
+        
+        
+        const data = await fetchWithRetry(url);
+
+        // DEBUGGING
+        
+        
+        
+        
+        if (!data) {
+            
+            return;
+        }
+
+        if (!Array.isArray(data)) {
+            console.error('❌ ERROR: events-window no retornó un array. Tipo recibido:', typeof data);
+            console.error('   Estructura:', JSON.stringify(data).substring(0, 200));
+            
+            // Fallback: intentar extraer array si está envuelto
+            if (data.events && Array.isArray(data.events)) {
+                
+                globalState.recentEventsAll = data.events;
+                syncRecentEventsWithFilters(
+                    document.getElementById('search-input')?.value || '',
+                    document.getElementById('filter-risk')?.value || 'all'
+                );
+                updateScientificPanel();
+                return;
+            }
+            
+            if (data.data && Array.isArray(data.data)) {
+                
+                globalState.recentEventsAll = data.data;
+                syncRecentEventsWithFilters(
+                    document.getElementById('search-input')?.value || '',
+                    document.getElementById('filter-risk')?.value || 'all'
+                );
+                updateScientificPanel();
+                return;
+            }
+            
+            
+            return;
+        }
+
+        
+        
+        if (data.length === 0) {
+            
+            return;
+        }
+
+        globalState.recentEventsAll = data;
+        syncRecentEventsWithFilters(
+            document.getElementById('search-input')?.value || '',
+            document.getElementById('filter-risk')?.value || 'all'
+        );
+        updateScientificPanel();
+
+    } catch (error) {
+        console.error('❌ Error cargando events-window:', error.message);
+        console.error('   Stack:', error.stack);
+    }
+}
+
+// ============================================================================
+// FUNCIONES DE ACTUALIZACIÓN DE PANEL
+// ============================================================================
 
 function updateRecommendation(maxProb) {
     const recBox = document.getElementById('recommendation-box');
@@ -931,8 +1199,6 @@ function updateScientificPanel() {
     setText('sci-lat-range', `${minLat}° a ${maxLat}°`);
     setText('sci-lon-range', `${minLon}° a ${maxLon}°`);
     setText('sci-tolerance', `${CONFIG.TOLERANCE_KM} km (Radio ~5 celdas)`);
-
-    // (Validación en ventana activa se almacena en BD al cerrar el pronóstico — no se muestra en vivo)
 }
 
 // ============================================================================
@@ -967,7 +1233,11 @@ function initLegend() {
         html += `
             <div class="legend-divider"></div>
             <div class="legend-item">
-            <span style="display:inline-block;width:10px;margin-right:8px;font-size:10px;text-align:center;line-height:1;" aria-hidden="true">📍</span>
+            <span style="display:inline-block;width:12px;margin-right:8px;font-size:16px;text-align:center;line-height:1;color:#58a6ff;opacity:0.92;" aria-hidden="true">★ </span>
+            <span> Último sismo IGP</span>
+            </div>
+            <div class="legend-item">
+            <span style="display:inline-block;width:12px;margin-right:8px;font-size:12px;text-align:center;line-height:1;" aria-hidden="true">📍</span>
             <span>Sismos >= 4.0 en la semana</span>
             </div>
             <div style="margin-top:8px; font-size:0.65rem; color:#8b949e">
@@ -989,6 +1259,7 @@ function initLegend() {
 
 async function refreshData() {
     const refreshBtn = document.getElementById('refresh-btn');
+    hideForecastUpdateBanner();
     if (refreshBtn) {
         refreshBtn.disabled = true;
         refreshBtn.classList.add('spinning');
@@ -1004,8 +1275,9 @@ async function refreshData() {
     try {
         await loadForecastData();
         await loadLastEvent();
-        await loadMetadata();
+        await loadMetadata();  // ← Cargar metadatos ANTES de eventos recientes
         await loadRecentEvents();
+        startForecastWatcher(); // ← Ahora tiene las fechas disponibles
         
         showLoading(false);
         showSuccess('✓ Datos actualizados correctamente');
@@ -1033,6 +1305,12 @@ window.addEventListener('resize', () => {
     }, 150);
 });
 
+window.addEventListener('beforeunload', () => {
+    if (globalState.forecastPollTimer) {
+        clearInterval(globalState.forecastPollTimer);
+    }
+});
+
 // ============================================================================
 // AYUDA (UI PROGRESIVA)
 // ============================================================================
@@ -1048,7 +1326,7 @@ function openHelpModal() {
             }
         }
     } catch (e) {
-        console.warn('No se pudo abrir ayuda:', e);
+        
     }
 }
 
@@ -1104,6 +1382,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!welcomeSeen) {
             const modalEl = document.getElementById('welcomeModal');
             if (modalEl) {
+                const blurFocusedElement = () => {
+                    const focused = document.activeElement;
+                    if (focused && typeof focused.blur === 'function') {
+                        focused.blur();
+                    }
+                };
+
+                modalEl.addEventListener('hide.bs.modal', blurFocusedElement);
+
+                const startBtn = document.getElementById('btn-start');
+                if (startBtn) {
+                    startBtn.addEventListener('click', blurFocusedElement);
+                }
+
                 const welcomeModal = new bootstrap.Modal(modalEl, {
                     backdrop: 'static',
                     keyboard: true
@@ -1124,7 +1416,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         showLoading(true);
-        
+
+        registerServiceWorker();
+        initPWAInstall();
+
         initHelpUI();
         initModeTabs();
         initFilters();
@@ -1132,8 +1427,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         await loadForecastData();
         await loadLastEvent();
-        await loadMetadata();
-        await loadRecentEvents();   // opcional — falla silenciosamente
+        await loadMetadata();  // ← Cargar metadatos PRIMERO (para obtener fechas)
+        await loadRecentEvents();
+        startForecastWatcher();  // ← Luego cargar eventos (usa las fechas)
         
         showLoading(false);
         
